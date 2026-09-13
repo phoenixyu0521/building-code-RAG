@@ -1,0 +1,9 @@
+# 凭据不进仓库
+config.json
+
+# 跑分产物（想留档就把下面两行删掉）
+结果_*.json
+
+# Python
+__pycache__/
+*.pyc

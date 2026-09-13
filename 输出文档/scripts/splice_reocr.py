@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
-"""把 --dpi 300 重识别得到的页面并回主 md。
-判定：仅当新页含「旧页所缺的条文号」时才替换，避免整体回退。
-用法: python splice_reocr.py [--dry-run]
+"""把 --dpi 300 重识别得到的页面并回 ocr_v2 的主 md。
+
+替换判据（保守）：新页必须**新增**旧页所缺的条文号，且不得净丢失条文号。
+覆盖两个来源目录：_reocr（第一批排队）与 _reocr2（补跑）。
+
+用法:
+  python splice_reocr.py --dry-run
+  python splice_reocr.py
 """
 import argparse
 import os
@@ -11,8 +16,9 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-OUT = "D:/WorkBuddy/项目/输出文档/ocr_v2"
-RE = "D:/WorkBuddy/项目/输出文档/_reocr"
+BASE = "D:/WorkBuddy/项目/输出文档"
+OUT = os.path.join(BASE, "ocr_v2")
+DIRS = [os.path.join(BASE, "_reocr"), os.path.join(BASE, "_reocr2")]
 JOBS = [
     ("gb55019", "GB 55019-2021 建筑与市政工程无障碍通用规范.md"),
     ("gb55031", "GB 55031-2022 民用建筑通用规范.md"),
@@ -21,6 +27,12 @@ JOBS = [
 
 ARTNO = re.compile(r"(?:[A-Z]\.)?\d{1,2}\.\d{1,2}\.\d{1,2}")
 PAGE_SPLIT = re.compile(r"(<!--\s*page\s+(\d+)\s*-->)")
+# 与切分器一致的编号内空格收敛，否则 `2. 9. 6` 会被误判为「丢失」
+SPACE_FIX = re.compile(r"([A-Z0-9])\.\s+(?=\d)")
+
+
+def norm(t):
+    return SPACE_FIX.sub(r"\1.", t)
 
 
 def pages_of(text):
@@ -35,7 +47,7 @@ def pages_of(text):
 
 
 def artnums(t):
-    return set(ARTNO.findall(t))
+    return set(ARTNO.findall(norm(t)))
 
 
 def main():
@@ -44,39 +56,43 @@ def main():
     args = ap.parse_args()
 
     for tag, fname in JOBS:
-        src_new = os.path.join(RE, tag, fname)
         dst = os.path.join(OUT, fname)
-        if not os.path.exists(src_new):
-            print(f"[跳过] {tag}: 无重识别结果 {src_new}")
+        # 收集两个来源目录里该规范的重识别页（后写的优先）
+        cand = {}
+        for d in DIRS:
+            p = os.path.join(d, tag, fname)
+            if os.path.exists(p):
+                cand.update(pages_of(open(p, encoding="utf-8").read()))
+        if not cand:
+            print(f"[跳过] {tag}: 无重识别结果")
             continue
 
-        old_txt = open(dst, encoding="utf-8").read()
-        new_txt = open(src_new, encoding="utf-8").read()
-        old_pg, new_pg = pages_of(old_txt), pages_of(new_txt)
-
+        old_pg = pages_of(open(dst, encoding="utf-8").read())
         print("=" * 72)
-        print(f"{fname}")
+        print(fname)
         replaced = []
-        for pg, new_body in sorted(new_pg.items()):
+        for pg, new_body in sorted(cand.items()):
             if pg not in old_pg:
+                print(f"   p{pg}: 主文件无此页 -> 忽略")
                 continue
             gained = artnums(new_body) - artnums(old_pg[pg])
-            if gained:
+            lost = artnums(old_pg[pg]) - artnums(new_body)
+            if gained and len(gained) >= len(lost):
                 replaced.append(pg)
-                print(f"   p{pg}: 新增条文号 {sorted(gained)} -> 替换")
+                print(f"   p{pg}: 新增 {sorted(gained)}" +
+                      (f" / 同时丢失 {sorted(lost)}" if lost else "") + " -> 替换")
                 old_pg[pg] = new_body
+            elif gained:
+                print(f"   p{pg}: 新增 {sorted(gained)} 但丢失 {sorted(lost)}（净损失）-> 保留原页")
             else:
-                lost = artnums(old_pg[pg]) - artnums(new_body)
-                print(f"   p{pg}: 无新增（旧独有 {sorted(lost) if lost else '无'}）-> 保留原页")
+                print(f"   p{pg}: 无新增" + (f"（旧独有 {sorted(lost)}）" if lost else "") + " -> 保留原页")
 
         if not replaced:
-            print("   本本无页被替换")
+            print("   无页被替换")
             continue
 
-        # 重组
         order = sorted(old_pg)
-        merged = "".join(
-            (f"<!-- page {p} -->" if p else "") + old_pg[p] for p in order)
+        merged = "".join((f"<!-- page {p} -->" if p else "") + old_pg[p] for p in order)
         if args.dry_run:
             print(f"   [dry-run] 将替换 {len(replaced)} 页: {replaced}")
         else:
@@ -85,7 +101,8 @@ def main():
                 shutil.copy2(dst, bak)
             with open(dst, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(merged)
-            print(f"   已写回，替换 {len(replaced)} 页: {replaced}（原文件备份 {os.path.basename(bak)}）")
+            print(f"   已写回，替换 {len(replaced)} 页: {replaced}"
+                  f"（备份 {os.path.basename(bak)}）")
 
 
 if __name__ == "__main__":

@@ -70,10 +70,18 @@ ARTNO = r"(?:[A-Z]\.)?\d{1,2}\.\d{1,2}\.\d{1,2}"
 ARTNO_FULL = re.compile(r"^" + ARTNO + r"$")
 NUM_ONLY_RE = re.compile(r"^\s*(" + ARTNO + r")\s*$")
 SEC_ONLY_RE = re.compile(r"^\s*(\d{1,2}\.\d{1,2})\s*$")
-ART_HEAD_RE = re.compile(r"^\s*(" + ARTNO + r")(?![.\d])\s*(.*)$")
+# ⚠️ 条号后禁止跟 `-`：`4.2.4-1` 是**表号**（表4.2.4-1），不是条文号。
+#    实测 JGJ 38 的 4.2.4 因跨页处出现行首 `4.2.4-1的规定…`，
+#    被误判为「新条文 4.2.4」→ 同一编号出现两条、正文被腰斩。
+#    `条`/`款` 同理：`…本规范第8.3.5条有关规定。` 换行后行首成 `8.3.5条有关规定。`，
+#    会被误判为条文 8.3.5（实测 JGJ 38 P29 产生 6 字假条）。
+NOT_NUM_TAIL = r"(?![.\d\-–—~～条款])"
+ART_HEAD_RE = re.compile(r"^\s*(" + ARTNO + r")" + NOT_NUM_TAIL + r"\s*(.*)$")
 # 句末之后的行内条文号：`……的规定。3.1.7 图书馆……`
-ART_INLINE_RE = re.compile(r"(?<=[。；])\s*(" + ARTNO
-                           + r")(?![.\d])\s*(?=[\u4e00-\u9fa5A-Za-z])")
+ART_INLINE_RE = re.compile(r"(?<=[。；])\s*(" + ARTNO + r")" + NOT_NUM_TAIL
+                           + r"\s*(?=[\u4e00-\u9fa5A-Za-z])")
+# 行首条文号（任意行，供预扫「本书有哪些章」用）
+ART_LINE_ANY = re.compile(r"(?m)^\s*(" + ARTNO + r")" + NOT_NUM_TAIL)
 # 章节标题：必须「独占一行」，形如 `3.6防灾避难` / `2.1 一般规定`
 #
 # ⚠️ 教训（2026-09-10，内容级破坏，勿回退）——此前用的是「行尾粘连」版本：
@@ -85,9 +93,31 @@ ART_INLINE_RE = re.compile(r"(?<=[。；])\s*(" + ARTNO
 #        → 条文被砍成 `…应符合本规范第4.`
 #    实测新 OCR（PP-OCRv6）行尾粘连 0 例（4 例命中**全是**交叉引用），
 #    行首形态 139 例。故彻底移除行尾版本，改用行首锚点 + 伪标题过滤。
-SEC_HEAD_RE = re.compile(r"^\s*(\d{1,2}\.\d{1,2})\s*([\u4e00-\u9fa5]{2,20})\s*$")
+# 节标题的标题部分可含顿号/连接号/空格/斜杠，且允许 1 字标题。
+# 实测：`4.6 行政办公、业务及技术设备用房`（含「、」）、`6.13 楼 地面`（含空格）、
+# `2.5门`（1 字标题）、`2.9 无障碍机动车停车位和上/落客区`（含「/」）此前都匹配不上
+# → 被粘进上一条正文尾部。
+SEC_HEAD_RE = re.compile(
+    r"^\s*([1-9]\d?\.\d{1,2})\s*([\u4e00-\u9fa5、，·（）()/][\u4e00-\u9fa5、，·（）()\s/]{0,19})\s*$")
 # 真节标题不含 的/条/款；`条的规定`、`条的规` 是「续行/交叉引用」的典型特征
 SEC_BAD_CHARS = set("的条款")
+# 章标题：`2 术语` / `4规划控制`（章号 + 纯中文标题，独占一行）。
+#
+# ⚠️ 教训（2026-09-10）——此前**没有**章标题识别，章标题行会被当作正文
+#    并进上一章最后一条的尾部（实测 30 处，如 1.0.4 尾 = `…的规定。2 术语`）。
+# 章标题不入库：章号可由条文号推出（chapter_of），入库只会污染检索。
+# 另：此前用 `SEC_ONLY_RE`（裸编号独占一行）判定节标题，会把**表格数值**
+#    （`1.50` / `3.0` / `0.65`，JGJ 38 附录表、GB 55037 表10.1.5）当成节号，
+#    并从上一行「偷」标题（`3.0` + `甲、乙、丙类仓库`）→ 实测 2 本规范
+#    产生 120 余个假 section。已改为**只认行首 `编号+标题` 同行**的形态。
+CHAPTER_RE = re.compile(
+    r"^\s*(\d{1,2})\s*([\u4e00-\u9fa5、，·（）()][\u4e00-\u9fa5、，·（）()\s]{1,19})\s*$")
+# 章标题剥离时的量词白名单：`…不应小于5 平方米` 这类正文结尾须保留
+CHAPTER_UNIT_WORDS = {
+    "毫米", "厘米", "平方米", "立方米", "平方", "立方", "千克", "公斤",
+    "米", "人", "个", "座", "层", "档", "度", "吨", "级", "类", "项",
+    "条", "款", "倍", "次", "台", "套", "间", "辆", "小时", "分钟", "分", "秒",
+}
 TABLE_RE = re.compile(r"表\s*([A-Z]?\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})")
 # 表格**标题**：前面必须是句末标点（或串首），后面不接「的」。
 # ⚠️ 不能用 TABLE_RE.search 直接切，也不能靠「行首」判定 —— 切分器拼接正文时
@@ -103,15 +133,24 @@ DISCARD_RE = re.compile(
     r"^\s*(?:附\s*录\s*([A-Z])|本?[规范标准]{0,4}用词说明|弓?\s*引用标准名录"
     r"|条\s*文\s*说\s*明|附[：:]\s*条文说明|目\s*次)")
 KEEP_APPENDIX = "B"
+# ⚠️ 2026-09-13 修正：本正则原先含 `\d{1,3}` 分支（整行 1~3 位纯数字一律丢弃），
+#    结果把**表格里独立成行的数值单元格**也当成页码删掉了 —— 实测 5 本规范共 399 行，
+#    GB 50352 表 3.2.1 的 1/5/25/2/50/3/100/4、JGJ 38 表 8.2.1-1 的 20/18/16/14 全丢。
+#    裸数字行改到主循环里单独处理（见 BARE_NUM_RE）：只有位于**页面最后一个非空行**
+#    的裸数字才当页脚丢弃，页面中部的保留。
 NOISE_RE = re.compile(
-    r"^\s*(?:[-—=*_·]{3,}|住房城乡建设部信息公开.*|.*信息公开浏览专用.*|\d{1,3}"
+    r"^\s*(?:[-—=*_·]{3,}|住房城乡建设部信息公开.*|.*信息公开浏览专用.*"
     r"|•\s*\d{1,3}\s*[.．]?|X1)\s*$")
+# 整行只有 1~3 位数字。可能是页脚页码，也可能是表格数值单元格（OCR 常一格一行）。
+BARE_NUM_RE = re.compile(r"^\s*\d{1,3}\s*$")
 
 # 页脚页码混入正文：`…的需要。• 55.`、`贵重精• 12 •密医疗装备用房`、`…。• 57 .`
 # 只认圆点项目符 `•`（U+2022）；中圆点 `·` 可能在正文里合法出现（如复合单位），
 # 故 `·` 仅在**行尾**才视作页码。
 BULLET_PAGE_RE = re.compile(r"\s*•\s*\d{1,3}\s*[.．]?\s*(?:•\s*)?")
 DOT_PAGE_TAIL_RE = re.compile(r"\s*·\s*\d{1,3}\s*[.．]?\s*$")
+# 整行页脚：OCR 把印刷页码识别为独立行，如「29·」「• 30·」「•40·」「• 55.」「6.」等。
+PAGE_FOOTER_RE = re.compile(r"^\s*(?:[•·•]\s*)?\d{1,3}\s*[.．·•]\s*(?:[•·•]\s*)?$")
 PAGENO_HITS = []          # [(页码所在行片段, 清理后)] 供报告统计
 
 
@@ -150,11 +189,14 @@ def drop_wm_lines(texts):
         「…可操作部件的中心距地面高度 / 专 / 应为0.85m~1.00m。」
     这些碎片（公开、息公开、专、专用、浏、住房…）都是水印字符串的子串。
 
-    判据（三重限制，确保不误删正文）：
-      1. 行长 ≤ 3 且所有字符均属于水印串 W；
+    判据（确保不误删正文）：
+      1. 行长 ≤ 4 且所有字符均属于水印串 W；
       2. 不以句末标点结尾 —— 正文段末短行几乎总带标点（「水平。」「抓杆；」）；
-      3. 下一行不是条文号/章节号/纯数字 —— 否则说明上一段正常结束，
-         该短行可能是真实段尾（如「…人均住房」的「住房」）。
+      3. **多字碎片（≥2 字）无条件丢弃**；只有**单字**碎片才追加「下一行不得是
+         条文号/章节号/纯数字」的保护 —— 单字如「住房」的尾字「房」可能真是段尾，
+         而 `公开`/`浏览`/`住房城`/`房城` 这类多字碎片必然是斜排水印的切块。
+         实测 GB 55019 3.6.4 尾被 `无障碍信息交流设施公开` 污染，其中多字碎片
+         `公开` 因下一行恰为条文号 `4.0.1…` 而被原规则（一律跳过）漏掉。
     """
     keep = [True] * len(texts)
 
@@ -165,7 +207,10 @@ def drop_wm_lines(texts):
         return ""
 
     for i, t in enumerate(texts):
-        if not t or len(t) > 3 or not set(t) <= WM_CHARS or ends_terminal(t):
+        if not t or len(t) > 4 or not set(t) <= WM_CHARS or ends_terminal(t):
+            continue
+        if len(t) >= 2:
+            keep[i] = False            # 多字水印碎片：无条件丢弃
             continue
         n = nxt(i)
         if not n:
@@ -190,6 +235,93 @@ def meta_of(filename):
 def chapter_of(no):
     m = re.match(r"^([A-Z]?\d+)", no)
     return m.group(1) if m else ""
+
+
+def chapters_present(text):
+    """预扫全书，返回真实存在的章号集合（用于校验章标题真伪）。"""
+    out = set()
+    for m in ART_LINE_ANY.finditer(text):
+        no = m.group(1)
+        if no[0].isalpha():          # 附录 B.0.1 之类
+            continue
+        out.add(int(no.split(".")[0]))
+    return out
+
+
+def sections_present(text):
+    """预扫全书，返回真实存在的节号集合（如 {"6.5","2.1",...}）。
+
+    用途：尾部节标题剥离的白名单。目次里也带节标题，故正文之后的节号同样能扫到。
+    正则用 `\\s+` 而非 `\\s*`：`2.0.1 民用建筑` 不能被误当成节号 `2.0`（后随 `.1`）。
+    """
+    return set(re.findall(r"(?m)^\s*(\d{1,2}\.\d{1,2})\s+[\u4e00-\u9fa5]", text))
+
+
+# 尾部残留的水印碎片（多字）。实测 GB 50352 6.17.3 尾 = `…安全牢固。住房`：
+# `住房` 因下一行恰为页码行而未被水印行规则丢弃。
+TAIL_WM_RE = re.compile(
+    r"(?:住房城乡|住房城|住房|城乡建设部|建设部|信息公开|息公开|公开浏览|开浏览"
+    r"|浏览专用|浏览专|浏览|览专用|息公|部信息|住房和)+$")
+
+
+# 尾部单字残留：水印的孤立单字（息/部/专/浏/用/房/住/公/开/览/意/入）、
+# OCR 误识的单字母（W/V/I/X）、项目符号（·/•）。
+# ⚠️ 仅在**前一字为句末标点**时剥离 —— 否则会误伤 `…应符合附录A` 这类合法结尾。
+TAIL_JUNK_RE = re.compile(r"([。；：）\u201d])\s*(?:[WVIX]|[息部专浏用房住公开览意入]|[·•])$")
+
+# 尾部页码残渣（紧跟句末标点）：`…的规定。42·` / `…的地点。57.` / `…外。58`
+TAIL_PAGENO_RE = re.compile(r"([。；：）\u201d])\s*\d{1,3}\s*[.．·•]?\s*$")
+
+# 尾部节标题（紧跟句末标点）：`…的规定。6.5 建筑的内部和外部装修`
+# 标题允许含「、，·（）()」与内部空格；是否剥离由调用方的 known_sec 白名单决定。
+TAIL_SEC_RE = re.compile(
+    r"([。；：）\u201d·•])\s*(\d{1,2}\.\d{1,2})\s*([\u4e00-\u9fa5、，·（）()/][\u4e00-\u9fa5、，·（）()\s/]{1,19})$")
+
+
+def tail_clean(t, known_ch=None, known_sec=None):
+    """清洗拼接后正文的尾部（水印碎片 + 单字残留 + 被并进来的章/节标题 + 页码残渣）。
+
+    ⚠️ 必须**迭代到不动点**：尾部残渣会级联出现。实测 GB 55037 9.3.3 的尾部为
+        `…室外安全地点。·10电气`（`• 52·` 清成 `·`，章标题 `10 电气` 被 OCR
+        拆成 `10电`+`气` 两行，都没能单独识别）。先剥掉章标题 `10电气` 后，
+        剩下的 `…地点。·` 还需再剥一次孤字 `·` —— 单趟清洗会留下尾巴。
+    """
+    prev = None
+    while prev != t:
+        prev = t
+        while True:
+            t2 = TAIL_WM_RE.sub("", t).rstrip()
+            if t2 == t:
+                break
+            t = t2
+        # 孤字 / 项目符号残渣（可级联，故内层循环至收敛）
+        while True:
+            m0 = TAIL_JUNK_RE.search(t)
+            if not m0:
+                break
+            t2 = t[:m0.start(1) + 1]
+            if t2 == t:
+                break
+            t = t2
+        # 尾部页码残渣：`…的规定。42·`、`…的地点。57.`
+        # ⚠️ 仅在**前一字符是句末标点**时剥离，避免吃掉 `…不应小于1.5` 这类正文数字。
+        m3 = TAIL_PAGENO_RE.search(t)
+        if m3:
+            t = t[:m3.start(1) + 1]
+        # 章标题仅在「前一字符是句末标点」时剥离，且章号须真实存在、标题不得是量词
+        m = re.search(r"([。；：）\u201d·•])\s*(\d{1,2})\s*([\u4e00-\u9fa5]{2,12})$", t)
+        if m:
+            num, title = int(m.group(2)), m.group(3)
+            if (known_ch is None or num in known_ch) and title not in CHAPTER_UNIT_WORDS \
+                    and not (set(title) & SEC_BAD_CHARS):
+                t = t[:m.start(1) + 1]
+        # 节标题（带节号）：`…的规定。6.5 建筑的内部和外部装修`
+        # ⚠️ SEC_BAD_CHARS 里有「的」，会挡住「建筑的内部和外部装修」这类真标题，
+        #    故此处改用「节号白名单」判定 —— 只有书中真实出现过的节号才剥离。
+        m2 = TAIL_SEC_RE.search(t)
+        if m2 and known_sec is not None and m2.group(2) in known_sec:
+            t = t[:m2.start(1) + 1]
+    return t
 
 
 def norm_text(s):
@@ -220,6 +352,9 @@ def read_pages(md_path):
             if buf:
                 out.append((page, buf))
             page, buf = int(m.group(1)), []
+            continue
+        # 丢弃整行页脚：页码若被拼接进正文，会造成「墙29·面」这类缺陷
+        if PAGE_FOOTER_RE.match(line):
             continue
         buf.append(line)
     if buf:
@@ -389,6 +524,9 @@ def split_file(md_path, json_path):
             elif mh and mh.group(2).strip():
                 n_inline += 1
     postfix = n_only > 0 and n_only >= 0.8 * (n_only + n_inline)
+    raw_text = open(md_path, encoding="utf-8").read()
+    known_ch = chapters_present(raw_text)
+    known_sec = sections_present(raw_text)
 
     b = Builder(postfix)
     discard = False
@@ -406,12 +544,19 @@ def split_file(md_path, json_path):
         flags = indent_flags(geo, page, len(lines))
         normed = [norm_text(l) for l in lines]
         drop = drop_wm_lines(normed)
+        # 该页最后一个非空行的下标 —— 页脚页码只可能出现在这里
+        last_idx = max((i for i, s in enumerate(normed) if s.strip()), default=-1)
         for idx in range(len(lines)):
             if drop[idx]:
                 continue
             s = normed[idx]
             if not s or NOISE_RE.match(s):
                 continue
+            # 裸数字行：页末的当页脚丢弃，页面中部的保留（多为表格数值单元格）。
+            if BARE_NUM_RE.match(s):
+                if idx == last_idx:
+                    PAGENO_HITS.append((s, f"<页末裸数字 p{page}>"))
+                    continue
 
             md = DISCARD_RE.match(s)
             if md:
@@ -442,16 +587,24 @@ def split_file(md_path, json_path):
                     continue
 
             if no:
+                if b.cur is not None and no == b.cur["no"]:
+                    # 页边距条号被 OCR 重复检出（JGJ 38 实测：`…不应小于表` 之后
+                    # 又单独出现一行 `7.2.1`，导致同号出现两条、正文被腰斩）。
+                    # 连续两条条文号绝不可能相同 → 一律按续行处理，不开新条。
+                    rest = None if mo else mh.group(2)
+                    if rest and rest.strip():
+                        b.on_text(rest.strip(), page, flags[idx])
+                    continue
                 b.on_article(no, page, None if mo else mh.group(2))
                 continue
 
-            ms = SEC_ONLY_RE.match(s)
-            if ms and b.started:
-                title = b.pop_title()
+            # 裸编号独占一行（旧版按节标题处理）已废弃：会把表格数值（`1.50`/`3.0`）
+            # 误判成节号并从上一行偷标题。此处不再分支，交给下面的正文续接逻辑。
+            # 章标题（`2 术语` / `4规划控制`）→ 结束当前条并丢弃，不入库
+            mc = CHAPTER_RE.match(s)
+            if mc and int(mc.group(1)) in known_ch \
+                    and not (set(mc.group(2)) & SEC_BAD_CHARS):
                 b.flush()
-                b.chunks.append({"article_no": ms.group(1), "kind": "section",
-                                 "page_start": page, "page_end": page,
-                                 "text": title or f"第{ms.group(1)}节", "moved": False})
                 continue
 
             mh2 = SEC_HEAD_RE.match(s)
@@ -495,7 +648,7 @@ def split_file(md_path, json_path):
                "version": meta["version"], "force_status": meta["force"], "status": meta["status"],
                "article_no": no, "chapter": chapter_of(no),
                "page_start": c["page_start"], "page_end": c["page_end"],
-               "kind": c["kind"], "text": c["text"].strip()}
+               "kind": c["kind"], "text": tail_clean(c["text"].strip(), known_ch, known_sec)}
         rev = []
         if c.get("moved"):
             rev.append("首行系从上一段移入(需核对)")
@@ -548,7 +701,11 @@ def extract_tables(chunks):
         cut = m.start() + m.group(0).index("表")
         head, tail = t[:cut].strip(), t[cut:].strip()
         digit_ratio = sum(ch.isdigit() for ch in tail) / max(len(tail), 1)
-        if len(head) >= 8 and len(tail) >= 60 and digit_ratio > 0.06:
+        # 表格判据：数字密度高，**或**尾部前 100 字内完全没有句末标点
+        # （实测 表7.3.1 / 表7.1.4 是纯文字表头，数字密度 0.03 低于原阈值 0.06，
+        #   被误当成正文留在条文里；而真正的正文续写不可能 100 字无句号）
+        term_free = "。" not in tail[:100]
+        if len(head) >= 8 and len(tail) >= 60 and (digit_ratio > 0.06 or term_free):
             out.append(dict(c, text=head))
             out.append(dict(c, article_no=f"{c['article_no']}-表", kind="table", text=tail))
         else:
@@ -596,7 +753,9 @@ def self_check(all_chunks):
             segs = sorted({int(n.split(".")[-1]) for n in nos})
             miss = [x for a, b in zip(segs, segs[1:]) for x in range(a + 1, b)]
             if miss:
-                issues.append((std, f"断号(节{sec})", f"{sec}.{_rng(miss)}"))
+                # 逐项带节号，避免 `5.2.2,5` 这种只剩首个节号的歧义写法
+                issues.append((std, f"断号(节{sec})",
+                               ",".join(f"{sec}.{x}" for x in miss)))
         if arts:
             first = min(arts, key=lambda c: (c["page_start"], c["article_no"]))
             if first["article_no"] != "1.0.1":
