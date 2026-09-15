@@ -1,0 +1,16 @@
+# 依赖版本：与本机「本地 Chroma 链路」的 venv 实测一致（2026-09-13）
+#
+# 安装（$PY 的定义见《本地部署操作指引.md》第 0 步）：
+#   & $PY -m pip install -r requirements.txt
+#
+# 说明：下面 7 个是**顶层依赖**，其余的（tokenizers / huggingface-hub /
+# onnxruntime / pydantic 等）由 pip 自动解析安装，不必手写。
+# torch 在 Windows 上从 PyPI 拿到的就是纯 CPU 版，约 118 MB。
+
+chromadb==1.5.9
+sentence-transformers==6.0.1
+torch==2.14.0
+transformers==5.17.0
+numpy==2.5.3
+python-dotenv==1.2.3
+requests==2.34.2
