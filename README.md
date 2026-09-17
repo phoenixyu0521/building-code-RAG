@@ -6,6 +6,39 @@
 
 ---
 
+## 界面
+
+本地版自带 Web 界面：**FastAPI 后端 + 单文件前端**，零 CDN、零构建、断网可开。
+
+```powershell
+cd D:\agent\项目
+& "C:\Users\A\.agent\binaries\python\envs\chroma\Scripts\python.exe" -m uvicorn app.api:app --port 8000
+# 浏览器打开 http://127.0.0.1:8000
+```
+
+> 启动后需等约 25 秒 —— `lifespan` 里在预热向量模型。**不要加 `--reload`**，改 `.py` 会重载模型。
+> 服务默认只监听 `127.0.0.1`，**仅本机可访问**；地址请用字面量 `127.0.0.1` 而非 `localhost`。
+
+| 能力 | 说明 |
+|---|---|
+| **只看现行强制条文** | 按 `force_status` 过滤，一键排除已废止条文 —— 通用 RAG 不具备的能力 |
+| 按规范限定范围 | 5 本规范可任意多选组合（清单由接口现取，不在前端写死） |
+| 引用卡片 | 每条列出 条文号 / 规范名 / 版本 / 强制状态标签 / 相似度 |
+| **拒答态** | 库内无据时明确回「未收录」，不编造 |
+| 明暗主题 | 两套配色均依据 `DESIGN.md` 实现，右上角可切换 |
+
+**接口**（前后端分离，前端只调这三个）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/health` | 库条数、生成/嵌入模型名、LLM 是否就绪 |
+| GET | `/api/standards` | 规范清单及各自条数 |
+| POST | `/api/ask` | `{question, top_k, force_only, standards}` → `{answer, hits[], refused}` |
+
+> 界面外观遵循仓库根目录的 `DESIGN.md`（取自 `VoltAgent/awesome-design-md`，MIT）。
+
+---
+
 ## 为什么需要它
 
 通用大模型回答建筑规范问题时，有三个不可接受的缺陷：
@@ -63,7 +96,7 @@
 | 组件 | 说明 |
 |---|---|
 | Dify Cloud（Sandbox） | Chatflow 编排 + 内置知识库 + 自带 WebApp UI |
-| `text-embedding-v4` | 1024 维（与本地 0.6B **同维**，可直接 A/B 对照） |
+| `text-embedding-v4` | 1024 维（与本地 0.6B **同维**，但两者向量空间不同、不可混用） |
 | Rerank | ⚠️ 必开 —— TopK 与 Score 阈值**仅在启用 Rerank 后生效** |
 
 ### 评测与工程
@@ -81,11 +114,11 @@
 | 维度 | 云端版（Dify） | 本地版（Chroma） |
 |---|---|---|
 | 入口 | WebApp URL / iframe 嵌入 | `python -m app.cli` |
-| 向量库 | Dify 内置知识库 | 本机 Chroma（`D:\WorkBuddy\chroma_db`） |
+| 向量库 | Dify 内置知识库 | 本机 Chroma（`D:\agent\chroma_db`） |
 | 嵌入模型 | `text-embedding-v4` (1024d) | Qwen3-Embedding-0.6B (1024d) |
 | 检索增强 | 高质量索引 + Rerank | 纯向量 + **元数据过滤** |
 | 生成模型 | 通义千问（Dify 内配置） | 通义千问（`.env` 配 Key） |
-| 界面 | ✅ 开箱即用 | 命令行（Gradio 界面待做） |
+| 界面 | ✅ 开箱即用（WebApp） | ✅ 自建 Web 界面 + 命令行（见上方「界面」一节） |
 | 离线可用 | ❌ | ⚠️ 检索可全离线，生成需 API |
 | 主要限制 | 元数据**只支持文档级**；Sandbox 限流 10 次/分钟 | 需自备模型与 Key |
 | 最优场景 | 演示、分享、快速验证 | 自控、可过滤、可深度定制 |
@@ -151,7 +184,10 @@
 │   ├── prompts.py              #   7 条铁律（与 Dify 文档逐字 diff 自检）
 │   ├── llm.py                  #   生成层（通义千问 · OpenAI 兼容）
 │   ├── pipeline.py             #   编排层（0 命中即短路拒答）
-│   └── cli.py                  #   命令行入口 + 元数据过滤预设
+│   ├── cli.py                  #   命令行入口 + 元数据过滤预设
+│   └── api.py                  #   Web 接口层（FastAPI，复用 pipeline）
+├── web/
+│   └── index.html              #   单页前端（零 CDN，由 FastAPI 顺带托管）
 ├── 建筑规范PDF/                 # 规范原件（PDF 受版权保护，不入库）
 ├── 输出文档/                    # 流水线产物与文档（仅 *.md 与 scripts/ 入库）
 │   ├── scripts/                #   OCR / 修复 / 切分 / 校验 / 建库 / 自检脚本
@@ -162,6 +198,7 @@
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
+├── DESIGN.md                   # 前端设计规范（Linear 风格 token）
 ├── AGENT.md                    # 协作与提交规范
 └── README.md
 ```
@@ -170,7 +207,7 @@
 
 ```powershell
 # 0) 指定解释器（本机 venv 实测环境）
-$PY = "C:\Users\A\.workbuddy\binaries\python\envs\chroma\Scripts\python.exe"
+$PY = "C:\Users\A\.agent\binaries\python\envs\chroma\Scripts\python.exe"
 
 # 1) 装依赖
 & $PY -m pip install -r requirements.txt
@@ -180,7 +217,7 @@ Copy-Item .env.example .env
 #    编辑 .env，填 DASHSCOPE_API_KEY=sk-xxxx
 
 # 3) 建库（两段式：先向量化，再入库；库目录必须纯 ASCII）
-cd "D:\WorkBuddy\项目"
+cd "D:\agent\项目"
 & $PY "输出文档\scripts\build_index.py" --stage vec
 & $PY "输出文档\scripts\build_index.py" --stage db
 
@@ -224,9 +261,7 @@ cd "D:\WorkBuddy\项目"
 - [x] 评测集构建（86 条 = 77 正例 + 9 拒答负例）
 - [x] 本地版：Chroma 向量库 + 代码链路（`app/` 7 模块，命令行可问答）
 - [x] 本地评测跑分（Recall@1 = 87.0%，MRR = 0.923）
-- [ ] 云端 A/B 对照（`--backend dify --profile pure`，需 Dify Key）
-- [ ] 本地图形界面（Gradio / Streamlit）
-- [ ] 全离线模式（Ollama，答辩断网保险）
+- [x] 自建 Web 界面（FastAPI 接口 + 单页前端，支持强制条文过滤）
 
 ## 环境
 
@@ -235,8 +270,8 @@ cd "D:\WorkBuddy\项目"
 | 操作系统 | Windows 11 |
 | Python | 3.13（venv `envs\chroma`） |
 | 推理设备 | CPU |
-| 向量库路径 | `D:\WorkBuddy\chroma_db`（**必须纯 ASCII**） |
-| 模型缓存 | `D:\WorkBuddy\models\hf`（`HF_HOME`） |
+| 向量库路径 | `D:\agent\chroma_db`（**必须纯 ASCII**） |
+| 模型缓存 | `D:\agent\models\hf`（`HF_HOME`） |
 
 ---
 
