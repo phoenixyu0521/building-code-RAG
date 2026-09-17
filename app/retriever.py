@@ -101,6 +101,28 @@ class Retriever:
     def count(self):
         return self._get_col().count()
 
+    # ---------------- 给 Web 层用的公开入口 ----------------
+    # 说明：api.py 需要「预热」和「取全部元数据」两件事。与其让它去碰 _get_model /
+    # _get_col 这些下划线成员，不如在这里开两个有名有姓的公开方法 —— 职责归属清楚。
+    @classmethod
+    def warmup(cls):
+        """预热：提前把向量模型与集合加载好，返回库内条数。
+
+        Web 服务启动时调用。不预热的话，第一次提问要干等十几秒载模型，
+        前端看起来就像卡死了。
+        """
+        cls._get_model()
+        return cls._get_col().count()
+
+    @classmethod
+    def metadatas(cls):
+        """取出全部元数据（只读，**不加载向量模型**）。
+
+        给前端做「按规范筛选」的下拉用 —— 规范清单应该从库里现取，
+        而不是在代码里写死，否则以后加一本规范就得改代码。
+        """
+        return cls._get_col().get(include=["metadatas"])["metadatas"]
+
 
 def format_hits(hits):
     """把检索结果打印成人看的样式。"""

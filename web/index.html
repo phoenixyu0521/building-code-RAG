@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="scheqdEnRZA7Q6BUpM3gGI" data-theme="light" data-dm-ref="1" style=""><head data-page-node-id="5EStc8gHgcaCoDV5eIqooY">
+<meta charset="UTF-8" data-page-node-id="3uBtunfgLb0tTVlc9rQcb1">
+<meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="dRBMBtIVYrrDoNSYfkc5QZ">
+<title>建筑规范智能问答</title>
+<script>try{if(localStorage.getItem("theme")==="dark")document.documentElement.setAttribute("data-theme","dark")}catch(e){}</script>
+<!--
+  设计语言：Linear —— 规范文件见仓库根 DESIGN.md
+  （来源 github.com/VoltAgent/awesome-design-md，MIT）
+
+  默认浅色。但 Linear 的 DESIGN.md 只定义了深色，它的原话是
+  "Light mode is not documented because the marketing site does not ship a light theme."
+
+  所以浅色不是我自己编的，而是按它文里给出的 3 个 inverse-* 亮面 token 推导：
+    · 亮面本就有现成的三档：inverse-canvas / inverse-surface-1 / inverse-surface-2
+    · 把深色的 canvas(#010102) 与 ink(#f7f8f8) 对调 —— 这一点得到了它的印证：
+      spec 的 inverse-ink 正是 #000000，与 canvas #010102 同族
+    · 层级语义整体镜像：深色里"抬升=更亮"，浅色里"抬升=更白"
+  仍被遵守的硬约束：
+    · 只有一种彩色：薰衣草蓝 #5e6ad2（品牌标记 / 主按钮 / 焦点环 / 进度条）
+    · 卡片 12px 圆角 + 1px hairline；按钮与输入框 8px 圆角
+    · 标题负字距，正文 400；等宽字体只用于编号与数字
+    · 不用阴影做层级（深色靠 surface 阶梯，浅色靠 hairline + 白面）
+  一处有意偏离：深色卡片的"顶部白色高光"在浅色面上没有等价物，
+  浅色改为不用任何代偿手法，见下方 --lift。
+-->
+<style>
+  /* ============================================================
+     主题令牌 · 浅色（默认）
+     ============================================================ */
+  :root{
+    color-scheme:light;
+
+    /* --- colors --- */
+    --canvas:#f5f6f6;              /* spec inverse-surface-1：页面底 */
+    --surface-1:#ffffff;           /* spec inverse-canvas：抬升面（卡片 / 输入框）*/
+    --surface-2:#f6f7f7;           /* spec inverse-surface-2：白卡内的凹槽（标签）*/
+    --surface-3:#e4e5e9;           /* 派生：再进一阶（现行强制的标签）*/
+    --surface-4:#d8dade;           /* 派生 */
+    --hairline:#e6e7ea;            /* 派生：浅色下的分界线 */
+    --hairline-strong:#d8dade;
+    --hairline-tertiary:#c2c5cb;
+
+    --primary:#5e6ad2;             /* spec 原值：唯一彩色 */
+    --primary-hover:#4a55c0;       /* 派生：白面上必须"压暗"才有反馈 */
+    --primary-focus:#5e69d1;       /* spec 原值：焦点环 */
+    --on-primary:#ffffff;
+
+    --ink:#010102;                 /* spec canvas 值反用：最深的一档文字 */
+    --ink-muted:#40454e;           /* 派生 */
+    --ink-subtle:#6b7280;          /* 派生 */
+    --ink-tertiary:#9398a1;        /* 派生 */
+
+    --danger:#e5484d;              /* spec「Known Gaps」提到产品内界面有红/橙/黄/绿标签色 */
+    --success:#27a644;             /* spec semantic-success 原值 */
+
+    /* 抬升物：浅色下"更白 + hairline"，深色下"更亮 + 无边框" */
+    --raised-bg:#ffffff;
+    --raised-border:var(--hairline);
+
+    /* 拒答卡：浅色下用深色反相卡（Linear 用反相卡做页面强调位）*/
+    --refused-bg:#010102;
+    --refused-ink:#f7f8f8;
+    --refused-head:#9aa0a6;
+    --refused-meta:#6b6f76;
+
+    /* 层级不用阴影。深色靠"顶部白高光"提像素质感；浅色面没有等价物，故留空 */
+    --lift:none;
+
+    /* --- rounded --- */
+    --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-pill:9999px;
+    /* --- spacing --- */
+    --s-xxs:4px; --s-xs:8px; --s-sm:12px; --s-md:16px; --s-lg:24px; --s-xl:32px; --s-xxl:48px;
+
+    /* 字体：Linear 自有字体不公开，按 DESIGN.md 的建议用 Inter 替代，中文回落雅黑 */
+    --font-text:Inter,"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,
+                "Microsoft YaHei","PingFang SC",sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;
+  }
+
+  /* ============================================================
+     主题令牌 · 深色（完全按 DESIGN.md 原值，逐字未改）
+     ============================================================ */
+  [data-theme=dark]{
+    color-scheme:dark;
+
+    --canvas:#010102;
+    --surface-1:#0f1011;
+    --surface-2:#141516;
+    --surface-3:#18191a;
+    --surface-4:#191a1b;
+    --hairline:#23252a;
+    --hairline-strong:#34343a;
+    --hairline-tertiary:#3e3e44;
+
+    --primary:#5e6ad2;
+    --primary-hover:#828fff;
+    --primary-focus:#5e69d1;
+
+    --ink:#f7f8f8;
+    --ink-muted:#d0d6e0;
+    --ink-subtle:#8a8f98;
+    --ink-tertiary:#62666d;
+
+    --raised-bg:#141516;
+    --raised-border:transparent;
+
+    --refused-bg:#ffffff;
+    --refused-ink:#000000;
+    --refused-head:#6b6f76;
+    --refused-meta:#9aa0a6;
+
+    --lift:inset 0 1px 0 rgba(255,255,255,.04);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--canvas); color:var(--ink);
+    font-family:var(--font-text); font-size:16px; line-height:1.5; letter-spacing:-.05px;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    transition:background .18s, color .18s;
+  }
+  .lift{box-shadow:var(--lift)}
+
+  /* ===== top-nav：56px，画布底 + 底部 hairline ===== */
+  nav{
+    height:56px; display:flex; align-items:center; gap:var(--s-md);
+    padding:0 var(--s-lg); border-bottom:1px solid var(--hairline);
+    background:var(--canvas); position:sticky; top:0; z-index:10;
+  }
+  .brand{display:flex; align-items:center; gap:9px; font-size:14px; color:var(--ink)}
+  .mark{width:15px; height:15px; border-radius:var(--r-xs); background:var(--primary); flex:none}
+  .nav-spacer{flex:1}
+  .badge{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--raised-bg); border:1px solid var(--raised-border);
+    color:var(--ink-muted);
+    font-size:12px; line-height:1.4; padding:2px 8px; border-radius:var(--r-pill);
+  }
+  .dot{width:6px; height:6px; border-radius:50%; background:var(--ink-tertiary); flex:none}
+  .dot.ok{background:var(--success)} .dot.bad{background:var(--danger)}
+
+  /* 主题切换：浅色时显示月亮（点了变深色），深色时显示太阳 */
+  .theme-btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:30px; height:30px; padding:0; flex:none;
+    background:var(--raised-bg); border:1px solid var(--raised-border);
+    border-radius:var(--r-pill); color:var(--ink-subtle);
+    cursor:pointer; transition:color .15s, border-color .15s;
+  }
+  .theme-btn:hover{color:var(--ink)}
+  .theme-btn:focus-visible{outline:2px solid rgba(94,105,209,.5); outline-offset:2px}
+  .theme-btn svg{width:15px; height:15px; display:block}
+  .theme-btn .ic-sun{display:none}
+  .theme-btn .ic-moon{display:block}
+  [data-theme=dark] .theme-btn .ic-sun{display:block}
+  [data-theme=dark] .theme-btn .ic-moon{display:none}
+
+  /* ===== 容器 ===== */
+  .wrap{max-width:1040px; margin:0 auto; padding:var(--s-xxl) var(--s-lg) 72px}
+  @media (max-width:768px){ .wrap{padding:var(--s-xl) var(--s-md) 56px} }
+
+  /* ===== 页头：eyebrow + display-md + subhead ===== */
+  .eyebrow{
+    font-size:13px; font-weight:500; line-height:1.3; letter-spacing:.4px;
+    color:var(--ink-subtle); margin:0 0 var(--s-sm);
+  }
+  h1{
+    margin:0 0 var(--s-sm); font-size:40px; font-weight:600; line-height:1.15;
+    letter-spacing:-1px; color:var(--ink);
+  }
+  .sub{
+    margin:0; font-size:20px; font-weight:400; line-height:1.4; letter-spacing:-.2px;
+    color:var(--ink-muted); max-width:64ch;
+  }
+  @media (max-width:768px){ h1{font-size:32px; letter-spacing:-.7px} .sub{font-size:17px} }
+
+  /* ===== 提问行：输入框 + 主按钮（Linear 紧凑规格 8px 14px）===== */
+  .ask{margin-top:var(--s-xl)}
+  .row{display:flex; gap:var(--s-xs)}
+  input[type=text]{
+    flex:1; min-width:0; font-family:inherit; font-size:16px; letter-spacing:-.05px;
+    color:var(--ink); background:var(--surface-1);
+    border:1px solid var(--hairline-strong); border-radius:var(--r-md);
+    padding:12px 14px; outline:none; transition:border-color .15s, box-shadow .15s;
+  }
+  input[type=text]::placeholder{color:var(--ink-tertiary)}
+  input[type=text]:hover{border-color:var(--hairline-tertiary)}
+  input[type=text]:focus{
+    border-color:var(--primary-focus);
+    box-shadow:0 0 0 2px rgba(94,105,209,.5);      /* 焦点环：2px primary-focus @50% */
+  }
+  button.primary{
+    font-family:inherit; font-size:14px; font-weight:500; line-height:1.2;
+    color:var(--on-primary); background:var(--primary);
+    border:none; border-radius:var(--r-md); padding:12px 18px;
+    cursor:pointer; white-space:nowrap; transition:background .15s, opacity .15s;
+  }
+  button.primary:hover:not(:disabled){background:var(--primary-hover)}
+  button.primary:active:not(:disabled){background:var(--primary-focus)}
+  button.primary:focus-visible{outline:2px solid rgba(94,105,209,.5); outline-offset:2px}
+  button.primary:disabled{opacity:.5; cursor:default}
+
+  /* ===== 筛选行：pill tab（默认画布底，选中 = 抬升一阶）===== */
+  .filters{
+    display:flex; flex-wrap:wrap; align-items:center; gap:var(--s-xs);
+    margin-top:var(--s-lg); font-size:13px; color:var(--ink-subtle);
+  }
+  .tab{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:inherit; font-size:14px; font-weight:500; line-height:1.2;
+    padding:6px 14px; border-radius:var(--r-pill);
+    background:var(--canvas); color:var(--ink-subtle);
+    border:1px solid transparent;               /* 占位，避免选中时抖动 */
+    cursor:pointer; user-select:none;
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .tab:hover{background:var(--surface-1); color:var(--ink-muted)}
+  .tab.on{
+    background:var(--raised-bg); color:var(--ink);
+    border-color:var(--raised-border);
+  }
+  .tab .n{font-family:var(--font-mono); font-size:12px; color:var(--ink-tertiary)}
+  .tab.on .n{color:var(--ink-subtle)}
+  .vsep{width:1px; height:16px; background:var(--hairline); margin:0 var(--s-xxs)}
+  select{
+    font-family:inherit; font-size:13px; color:var(--ink-muted);
+    background:var(--surface-1); border:1px solid var(--hairline-strong);
+    border-radius:var(--r-sm); padding:5px 8px; outline:none; cursor:pointer;
+  }
+  select:focus{border-color:var(--primary-focus); box-shadow:0 0 0 2px rgba(94,105,209,.4)}
+  .grp{display:flex; align-items:center; gap:6px}
+
+  /* ===== 示例问题：changelog-row 质感 ===== */
+  .examples{margin-top:var(--s-lg); display:flex; flex-direction:column; gap:var(--s-xxs)}
+  .ex{
+    display:flex; align-items:baseline; gap:var(--s-sm);
+    padding:9px 12px; border-radius:var(--r-sm);
+    font-size:14px; color:var(--ink-subtle); cursor:pointer;
+    border:1px solid transparent; transition:background .15s, color .15s, border-color .15s;
+  }
+  .ex:hover{background:var(--surface-1); border-color:var(--hairline); color:var(--ink-muted)}
+  .ex .k{
+    font-family:var(--font-mono); font-size:11px; color:var(--ink-tertiary);
+    text-transform:uppercase; letter-spacing:.5px; flex:none;
+  }
+
+  /* ===== 区块标题（eyebrow 规格）===== */
+  .label{
+    font-size:13px; font-weight:500; letter-spacing:.4px; color:var(--ink-subtle);
+    margin:0 0 var(--s-sm);
+  }
+  #result{margin-top:var(--s-xxl)}
+
+  /* ===== 卡片 ===== */
+  .card{
+    background:var(--surface-1); border:1px solid var(--hairline);
+    border-radius:var(--r-lg); padding:var(--s-lg);
+  }
+  /* 答案卡用 product-screenshot-card 规格：rounded xl + 24px padding */
+  .answer{border-radius:var(--r-xl); white-space:pre-wrap; word-break:break-word; font-size:16px}
+  .a-head{
+    display:flex; align-items:center; gap:var(--s-xs); margin-bottom:var(--s-sm);
+    font-size:13px; font-weight:500; letter-spacing:.4px; color:var(--ink-subtle);
+  }
+  .a-head .meta{
+    margin-left:auto; font-family:var(--font-mono); font-size:12px;
+    letter-spacing:0; color:var(--ink-tertiary);
+  }
+  /* 拒答 = 反相卡。Linear 本来就用反相卡做页面强调位，既醒目又不必引入第二种彩色 */
+  .answer.refused{
+    background:var(--refused-bg); border-color:var(--refused-bg);
+    color:var(--refused-ink);
+  }
+  .answer.refused .a-head{color:var(--refused-head)}
+  .answer.refused .a-head .meta{color:var(--refused-meta)}
+
+  /* ===== 引用条文 ===== */
+  .hits{margin-top:var(--s-lg); display:flex; flex-direction:column; gap:var(--s-sm)}
+  .hit{display:block}
+  .hit-top{display:flex; align-items:baseline; gap:var(--s-xs); flex-wrap:wrap}
+  .idx{
+    font-family:var(--font-mono); font-size:12px; color:var(--ink-tertiary);
+    flex:none; min-width:16px;
+  }
+  .art{font-size:16px; font-weight:500; color:var(--ink)}
+  .std{font-size:14px; color:var(--ink-subtle)}
+  .tags{margin-left:auto; display:flex; gap:6px; flex-wrap:wrap}
+  .tag{
+    font-size:12px; line-height:1.4; padding:2px 8px; border-radius:var(--r-pill);
+    background:var(--surface-2); color:var(--ink-muted); white-space:nowrap;
+  }
+  .tag.strong{background:var(--surface-3); color:var(--ink)}   /* 现行强制：对比更强一阶 */
+  .tag.weak{                                                    /* 已废止：压暗 */
+    background:transparent; border:1px solid var(--hairline); color:var(--ink-tertiary);
+  }
+
+  .score{display:flex; align-items:center; gap:var(--s-xs); margin-top:10px}
+  .score span{font-size:12px; color:var(--ink-tertiary); flex:none}
+  .score b{
+    font-family:var(--font-mono); font-size:12px; font-weight:400;
+    color:var(--ink-muted); font-variant-numeric:tabular-nums; flex:none;
+  }
+  .bar{flex:1; height:2px; background:var(--hairline); border-radius:var(--r-pill); overflow:hidden; min-width:60px}
+  .bar > i{display:block; height:100%; background:var(--primary); border-radius:var(--r-pill); opacity:.85}
+
+  .text{
+    margin-top:var(--s-sm); padding:12px 14px;
+    background:var(--canvas); border:1px solid var(--hairline); border-radius:var(--r-md);
+    font-size:14px; color:var(--ink-muted); white-space:pre-wrap; word-break:break-word;
+    max-height:230px; overflow:auto;
+  }
+
+  /* ===== 状态条 ===== */
+  .banner{
+    margin-top:var(--s-lg); padding:12px 14px; border-radius:var(--r-md);
+    font-size:14px; color:var(--ink-muted);
+    background:var(--surface-1); border:1px solid var(--hairline);
+  }
+  .banner.err{border-color:var(--danger); color:var(--ink)}
+  .banner .lbl{
+    font-size:13px; font-weight:500; letter-spacing:.4px; color:var(--ink-subtle);
+    display:block; margin-bottom:4px;
+  }
+  .spin{
+    display:inline-block; width:11px; height:11px; margin-right:8px; vertical-align:-1px;
+    border:2px solid var(--hairline-tertiary); border-top-color:var(--primary);
+    border-radius:50%; animation:sp .7s linear infinite;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ===== footer：画布底 + caption ===== */
+  footer{
+    margin-top:56px; padding-top:var(--s-md); border-top:1px solid var(--hairline);
+    font-size:12px; color:var(--ink-subtle);
+    display:flex; justify-content:space-between; gap:var(--s-sm); flex-wrap:wrap;
+  }
+  footer b{font-family:var(--font-mono); font-weight:400; color:var(--ink-muted)}
+  code{font-family:var(--font-mono); font-size:12px; color:var(--ink-muted)}
+</style>
+<style id="__dm_no_drag_style__">* { -webkit-user-drag: none !important; }</style><style id="__dm_bindable_badge_style__">[data-sp-bindable="database"]{outline:1px dashed #0088ff;outline-offset:2px;border-radius:4px;}[data-sp-bindable="database"] *{pointer-events:none !important;transition:none !important;animation:none !important;}[data-sp-bindable="database"]{transition:none !important;animation:none !important;}</style></head>
+<body data-page-node-id="1hgvvT8fkHqPxPk4C8XbZ0" style="">
+
+<nav data-page-node-id="Lz5kF2n7CF8ZjjL2umHjop">
+  <span class="brand" data-page-node-id="y2FJLgEv2da0Arbe0ruoqx"><i class="mark" data-page-node-id="9mMGLqzSZxnt6CwhHkM7aO"></i>建筑规范智能问答</span>
+  <span class="nav-spacer" data-page-node-id="D8SSFigNSjXqZWIndZNnIG"></span>
+  <span class="badge" data-page-node-id="yzDWa0WayMUn6bqrBS1XH0"><span class="dot bad" id="dot" data-page-node-id="KwbG3ttXcdMr7i5rS3l116"></span><span id="statusText" data-page-node-id="WfA6IXqtSr8XopsYytFkdA">未就绪</span></span>
+  <button class="theme-btn" id="themeBtn" type="button" aria-label="切换深浅色" title="切换深浅色" data-page-node-id="m3MbSpJyDdxFGdbH7fEZLN">
+    <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="qGaCKBssDgEbwyDZ6A5ZjT">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" data-page-node-id="rurOymBU5xK9wdcOe1szO8"></path>
+    </svg>
+    <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="w4dDG7YXkFfw1jCT69qEUq">
+      <circle cx="12" cy="12" r="5" data-page-node-id="lXds2Awyd3vg26RVOQwS9H"></circle>
+      <line x1="12" y1="1" x2="12" y2="3" data-page-node-id="6sTrX2BfMYVHEsYzHUbAUu"></line><line x1="12" y1="21" x2="12" y2="23" data-page-node-id="GsFkus0wUiPDvJgRhLkpD4"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" data-page-node-id="uAsKoFeMI2NzK3lJ7z09uc"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" data-page-node-id="dWFcdulgnI1CG78A4CloBu"></line>
+      <line x1="1" y1="12" x2="3" y2="12" data-page-node-id="EltuZdbDCRlPwqhboS17RH"></line><line x1="21" y1="12" x2="23" y2="12" data-page-node-id="NKQeDflFPar8RkV4ZBnvh3"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" data-page-node-id="t7frCvVWmUhCM4jreHNHNi"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" data-page-node-id="OkydmjwSHGqig0aKe2vEWo"></line>
+    </svg>
+  </button>
+</nav>
+
+<div class="wrap" data-page-node-id="tlv2YyI0pGzVKjZFmDnxPN">
+
+  
+  <h1 data-page-node-id="VbmrldJSeCBTskBKqKEACW">回答一切你在建筑设计上遇到的设计规范问题</h1>
+  <p class="sub" data-page-node-id="7pJQIl5e095G4fNzjdJtZD" style="font-size: 16px;">
+    库内 5 部国家标准与行业标准，逐条切分后本地向量化。回答附条文号与规范版本，
+    检索不到时明确拒答，不编造条文。
+  </p>
+
+  <!-- 提问 -->
+  <div class="ask" data-page-node-id="z9AskzpH1RHaEk4hdk9IC9">
+    <div class="row" data-page-node-id="uSlgyPPLpoWxXT83w8HFcH">
+      <input type="text" id="q" autocomplete="off" maxlength="500" placeholder="例如：民用建筑的设计使用年限分成哪几类？" data-page-node-id="TfBDpZPbRXf9xkIVjo9VUA">
+      <button class="primary" id="go" data-page-node-id="AgYo7N8LXrnIWHZewOV2OZ">提问</button>
+    </div>
+
+    <div class="filters" data-page-node-id="63f2gDcqSexs2GKVcAoDVE">
+      <button class="tab" id="forceChip" type="button" data-page-node-id="DHh1vv6BlRXf6QTSFbxvV2">只看现行强制条文</button>
+      <span class="vsep" data-page-node-id="Jx0dwWNpjGZ7FN3sTpoi3m"></span>
+      <span class="grp" data-page-node-id="tPetYYUVJSqyHm8BiHFoH9">返回
+        <select id="topk" data-page-node-id="EoZ0XM7X5roRQFb4SGRe0V">
+          <option value="3" data-page-node-id="T8PDldeCfTM66553ApCvHW">3</option>
+          <option value="5" selected="" data-page-node-id="IOPQw5oCqEdFf1e6CYpGrm">5</option>
+          <option value="10" data-page-node-id="cKhGZuivFUbvDgjgQc7yRQ">10</option>
+          <option value="15" data-page-node-id="JGnDaXR1LiqYwc1zcx1dkG">15</option>
+        </select>
+        条
+      </span>
+      <span class="vsep" data-page-node-id="cjRQX21Nb8U7Gu2npxLBTR"></span>
+      <span id="stdLabel" data-page-node-id="O4TVRLOQmrEENa8Dkl41To">规范</span>
+      <span id="stds" style="display:contents" data-page-node-id="EZgSXHIZGGpLaAGF1tuvtP"></span>
+    </div>
+
+    <div class="examples" id="examples" data-page-node-id="WTq1Qf7JfilPvH637rErIU"></div>
+  </div>
+
+  <div id="result" data-page-node-id="GVd3A0ERB4YQPaHFl1F10l"></div>
+
+  <footer data-page-node-id="9ws9TdKfdhvDCv4HvhiI6H">
+    <span data-page-node-id="PjrKp4dkO7BzRpWP93uVAU">库内 <b id="fCount" data-page-node-id="vYqcO74bKLgj7GnVJG2smz">—</b> 条 · 生成 <b id="fChat" data-page-node-id="o5w47HK3UFkx9au2p9vGDO">—</b> · 向量 <b id="fEmbed" data-page-node-id="21tSCMvXw5VkATGCPGlycr">—</b></span>
+    <span data-page-node-id="NT6vJ3kBtrOtx7QykwnICW">Python · ChromaDB · FastAPI</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var API = "";                                  // 同源，留空即可
+  var $ = function (id) { return document.getElementById(id); };
+
+  var picked = new Set();                        // 已勾选的规范号
+  var forceOnly = false;
+  var busy = false;
+
+  /* ---------------- 主题切换 ---------------- */
+  var root = document.documentElement;
+  function setTheme(t) {
+    root.setAttribute("data-theme", t);
+    try { localStorage.setItem("theme", t); } catch (e) {}
+  }
+  $("themeBtn").onclick = function () {
+    setTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  };
+  if (root.getAttribute("data-theme") !== "dark") { setTheme("light"); }
+
+  /* ---------------- 顶部状态 ---------------- */
+  function loadHealth() {
+    fetch(API + "/api/health").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) { throw new Error(d.error || "服务不可用"); }
+      $("dot").className = "dot ok";
+      $("statusText").textContent = "就绪 · " + d.count + " 条";
+      $("fCount").textContent = d.count;
+      $("fChat").textContent = d.chat_model;
+      $("fEmbed").textContent = d.embed_model;
+      render("");                                  // 清掉上一轮的残留提示
+      if (!d.llm_enabled) {
+        render('<div class="banner err"><span class="lbl">配置缺失</span>' +
+               "服务端未读到 API Key，只能检索、不能生成答案。检查项目根目录的 .env。</div>");
+      }
+    }).catch(function (e) {
+      $("dot").className = "dot bad";
+      $("statusText").textContent = "未就绪";
+      render('<div class="banner err"><span class="lbl">连不上后端</span>' +
+             esc(e.message) +
+             "<br>请确认服务已启动：<code>python -m uvicorn app.api:app --port 8000</code></div>");
+    });
+  }
+
+  /* ---------------- 规范筛选项（从接口现取，不写死） ---------------- */
+  function loadStandards() {
+    fetch(API + "/api/standards").then(function (r) { return r.json(); }).then(function (d) {
+      var box = $("stds");
+      $("stdLabel").textContent = "规范";
+      box.innerHTML = "";
+      (d.items || []).forEach(function (it) {
+        var b = document.createElement("button");
+        b.className = "tab";
+        b.type = "button";
+        b.title = it.standard_name + " " + it.version;
+        b.innerHTML = esc(it.standard) + '<span class="n">' + it.count + "</span>";
+        b.onclick = function () {
+          if (picked.has(it.standard)) { picked.delete(it.standard); b.classList.remove("on"); }
+          else { picked.add(it.standard); b.classList.add("on"); }
+        };
+        box.appendChild(b);
+      });
+    }).catch(function () { $("stdLabel").textContent = "规范（读取失败）"; });
+  }
+
+  /* ---------------- 示例问题 ---------------- */
+  var EXAMPLES = [
+    ["1.", "哪些建筑空间不计算建筑面积？"],
+    ["2.", "建筑出入口的设置要考虑哪些要求？"]
+  ];
+
+  function buildExamples() {
+    var box = $("examples");
+    EXAMPLES.forEach(function (pair) {
+      var s = document.createElement("div");
+      s.className = "ex";
+      s.innerHTML = '<span class="k">' + esc(pair[0]) + "</span><span>" + esc(pair[1]) + "</span>";
+      s.onclick = function () { $("q").value = pair[1]; ask(); };
+      box.appendChild(s);
+    });
+  }
+
+  /* ---------------- 提问 ---------------- */
+  function ask() {
+    if (busy) { return; }
+    var q = $("q").value.trim();
+    if (!q) { $("q").focus(); return; }
+
+    busy = true;
+    $("go").disabled = true;
+    $("go").textContent = "检索中";
+    render('<div class="banner"><span class="spin"></span>' +
+           "正在检索条文并生成答案 —— 首次提问要加载模型，可能十几秒</div>");
+
+    var t0 = Date.now();
+    fetch(API + "/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: q,
+        top_k: parseInt($("topk").value, 10),
+        force_only: forceOnly,
+        standards: Array.from(picked)
+      })
+    }).then(function (r) {
+      return r.json().then(function (d) {
+        if (!r.ok) { throw new Error(d.detail || ("HTTP " + r.status)); }
+        return d;
+      });
+    }).then(function (d) {
+      draw(d, Date.now() - t0);
+    }).catch(function (e) {
+      render('<div class="banner err"><span class="lbl">请求失败</span>' + esc(e.message) + "</div>");
+    }).then(function () {
+      busy = false;
+      $("go").disabled = false;
+      $("go").textContent = "提问";
+    });
+  }
+
+  /* ---------------- 渲染 ---------------- */
+  function draw(d, ms) {
+    var h = [];
+    var secs = (ms / 1000).toFixed(1);
+
+    h.push('<p class="label">回答</p>');
+    h.push('<div class="card answer lift' + (d.refused ? " refused" : "") + '">');
+    h.push('<div class="a-head">' + (d.refused ? "未收录 · 已拒答" : "基于库内条文") +
+           '<span class="meta">' + secs + "s · " +
+           (d.used_llm ? "已调用大模型" : "未调用大模型") + "</span></div>");
+    h.push(esc(d.answer));
+    h.push("</div>");
+
+    if (d.hits && d.hits.length) {
+      h.push('<div class="hits"><p class="label">引用条文 ' + d.hits.length + " 条</p>");
+      d.hits.forEach(function (x, i) {
+        var dead = x.force_status.indexOf("废止") >= 0;
+        var tags = '<span class="tag ' + (dead ? "weak" : "strong") + '">' +
+                   esc(x.force_status) + "</span>";
+        if (x.status) { tags += '<span class="tag">' + esc(x.status) + "</span>"; }
+        if (x.kind && x.kind !== "article") { tags += '<span class="tag">' + esc(x.kind) + "</span>"; }
+
+        h.push('<div class="card hit lift">');
+        h.push('<div class="hit-top">');
+        h.push('<span class="idx">' + (i < 9 ? "0" : "") + (i + 1) + "</span>");
+        h.push('<span class="art">第 ' + esc(x.article_no) + " 条</span>");
+        h.push('<span class="std">《' + esc(x.standard_name) + "》" + esc(x.standard) +
+               (x.version ? " · " + esc(x.version) : "") + "</span>");
+        h.push('<span class="tags">' + tags + "</span>");
+        h.push("</div>");
+        h.push('<div class="score"><span>相似度</span><b>' + x.score.toFixed(4) +
+               '</b><span class="bar"><i style="width:' +
+               Math.max(2, Math.min(100, x.score * 100)) + '%"></i></span></div>');
+        h.push('<div class="text">' + esc(x.text) + "</div>");
+        h.push("</div>");
+      });
+      h.push("</div>");
+    } else {
+      h.push('<div class="banner"><span class="lbl">零命中短路</span>' +
+             "检索未命中任何条文，直接拒答且未调用大模型 —— 这是防编造的第一道防线。</div>");
+    }
+    render(h.join(""));
+  }
+
+  function render(html) { $("result").innerHTML = html; }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  /* ---------------- 事件 ---------------- */
+  $("go").onclick = ask;
+  $("q").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); ask(); }
+  });
+  $("forceChip").onclick = function () {
+    forceOnly = !forceOnly;
+    this.classList.toggle("on", forceOnly);
+  };
+
+  buildExamples();
+  loadHealth();
+  loadStandards();
+})();
+</script>
+
+
+
+</body></html>

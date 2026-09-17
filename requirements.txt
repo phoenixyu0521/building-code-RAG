@@ -14,3 +14,10 @@ transformers==5.17.0
 numpy==2.5.3
 python-dotenv==1.2.3
 requests==2.34.2
+
+# --- Web 界面层（app/api.py + web/index.html）------------------------------
+# 装的时候 uvicorn / pydantic 通常已经被 chromadb 带进来了，实际只需补 fastapi。
+# 版本核对（2026-09-17 本机 venv）：uvicorn 0.52.4 / pydantic 2.13.5
+fastapi==0.141.1
+uvicorn==0.52.4
+
