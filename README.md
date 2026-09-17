@@ -11,8 +11,8 @@
 本地版自带 Web 界面：**FastAPI 后端 + 单文件前端**，零 CDN、零构建、断网可开。
 
 ```powershell
-cd D:\agent\项目
-& "C:\Users\A\.agent\binaries\python\envs\chroma\Scripts\python.exe" -m uvicorn app.api:app --port 8000
+cd D:\WorkBuddy\项目
+& "C:\Users\A\.workbuddy\binaries\python\envs\chroma\Scripts\python.exe" -m uvicorn app.api:app --port 8000
 # 浏览器打开 http://127.0.0.1:8000
 ```
 
@@ -114,7 +114,7 @@ cd D:\agent\项目
 | 维度 | 云端版（Dify） | 本地版（Chroma） |
 |---|---|---|
 | 入口 | WebApp URL / iframe 嵌入 | `python -m app.cli` |
-| 向量库 | Dify 内置知识库 | 本机 Chroma（`D:\agent\chroma_db`） |
+| 向量库 | Dify 内置知识库 | 本机 Chroma（`D:\WorkBuddy\chroma_db`） |
 | 嵌入模型 | `text-embedding-v4` (1024d) | Qwen3-Embedding-0.6B (1024d) |
 | 检索增强 | 高质量索引 + Rerank | 纯向量 + **元数据过滤** |
 | 生成模型 | 通义千问（Dify 内配置） | 通义千问（`.env` 配 Key） |
@@ -207,7 +207,7 @@ cd D:\agent\项目
 
 ```powershell
 # 0) 指定解释器（本机 venv 实测环境）
-$PY = "C:\Users\A\.agent\binaries\python\envs\chroma\Scripts\python.exe"
+$PY = "C:\Users\A\.workbuddy\binaries\python\envs\chroma\Scripts\python.exe"
 
 # 1) 装依赖
 & $PY -m pip install -r requirements.txt
@@ -217,7 +217,7 @@ Copy-Item .env.example .env
 #    编辑 .env，填 DASHSCOPE_API_KEY=sk-xxxx
 
 # 3) 建库（两段式：先向量化，再入库；库目录必须纯 ASCII）
-cd "D:\agent\项目"
+cd "D:\WorkBuddy\项目"
 & $PY "输出文档\scripts\build_index.py" --stage vec
 & $PY "输出文档\scripts\build_index.py" --stage db
 
@@ -270,8 +270,8 @@ cd "D:\agent\项目"
 | 操作系统 | Windows 11 |
 | Python | 3.13（venv `envs\chroma`） |
 | 推理设备 | CPU |
-| 向量库路径 | `D:\agent\chroma_db`（**必须纯 ASCII**） |
-| 模型缓存 | `D:\agent\models\hf`（`HF_HOME`） |
+| 向量库路径 | `D:\WorkBuddy\chroma_db`（**必须纯 ASCII**） |
+| 模型缓存 | `D:\WorkBuddy\models\hf`（`HF_HOME`） |
 
 ---
 
