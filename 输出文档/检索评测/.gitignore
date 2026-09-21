@@ -3,6 +3,12 @@ config.json
 
 # 跑分产物（想留档就把下面两行删掉）
 结果_*.json
+结果_*.md
+
+# RAGAS 产物（中间数据与报告，不必进仓库）
+ragas_input*.jsonl
+ragas_cache.jsonl
+结果_ragas_*.csv
 
 # Python
 __pycache__/

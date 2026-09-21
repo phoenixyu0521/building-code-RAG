@@ -61,6 +61,16 @@ MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 HEADER_RE = re.compile(r"】(.+?)（")            # 从检索结果正文里抠出「条文号」
 
+# 从 hit 的 doc 字段里抠出规范号。两个后端格式不同：
+#   Dify   doc = "GB 50352-2019 民用建筑设计统一标准"（规范号 + 规范名）
+#   Chroma doc = "GB 50352-2019"（纯规范号，取自元数据）
+STD_RE = re.compile(r"([A-Z]{2,}\s?\d+(?:-\d{4})?)")
+
+
+def std_of_doc(doc):
+    m = STD_RE.match((doc or "").strip())
+    return m.group(1) if m else (doc or "").strip()
+
 RERANKERS = {                                   # 通义 / 硅基流动 的两支可用 rerank
     "qwen3": ("tongyi", "qwen3-rerank"),
     "gte": ("tongyi", "gte-rerank-v2"),
@@ -218,13 +228,22 @@ def load_eval(only_type=None, only_standard=None, limit=None):
 
 
 def rank_of_gold(item, hits):
-    """返回金标首次出现的名次（1 起）；没命中返回 0。"""
+    """返回金标首次出现的名次（1 起）；没命中返回 0。
+
+    ★ 必须同时比对「规范号 + 条文号」两条。语料含 5 本规范，条文号会在规范间重复
+    （实测 GB52-07：GB 55031-2022 的 4.2.2 与 GB 50352-2019 的 4.2.2 撞号），
+    只比条文号会把别本规范的条文当成命中 → Recall@1 虚高。
+    """
     gold = set(item["gold"])
     if not gold:
         return 0
+    std = item.get("standard")
     for i, h in enumerate(hits, 1):
-        if h.get("gold_key") in gold:
-            return i
+        if h.get("gold_key") not in gold:
+            continue
+        if std and std_of_doc(h.get("doc")) != std:
+            continue
+        return i
     return 0
 
 
