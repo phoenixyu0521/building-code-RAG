@@ -9,10 +9,18 @@
 3. **守住中文路径陷阱**：``CHROMA_DIR`` 在这里做一次 ASCII 断言，任何脚本都绕不过去。
    （chromadb 1.5.9 在含中文的路径下**不写 HNSW 索引**且不报错，详见
    ``输出文档/scripts/build_index.py`` 文件头）
+4. **脚本与 Web 同源（2026-11 整改）**：``输出文档/scripts/`` 与 ``输出文档/检索评测/``
+   下的脚本一律 ``from _bcr_config import load_config``，而 ``_bcr_config`` 只是本文件的
+   薄壳 —— 库目录 / 集合名 / 模型名 / 语料路径只在这里定义一次，不再各脚本各写一份。
 
 用法
 ----
-    from app.config import CHROMA_DIR, EMBED_MODEL   # 直接取常量
+    from app.config import CHROMA_DIR, COLLECTION, EMBED_MODEL   # 直接取常量
+    from app.config import Config, current                       # 需要快照时
+
+    脚本里（工作目录不在项目根也没关系）：
+        from _bcr_config import load_config
+        cfg = load_config()
 
 自检（打印当前生效的全部配置，Key 只显示掩码）：
     python -m app.config
@@ -58,6 +66,16 @@ COLLECTION = _env("CHROMA_COLLECTION", "standards")
 CHUNKS_FILE = _env("CHUNKS_FILE",
                    os.path.join(ROOT, "输出文档", "chunks_v5", "chunks.jsonl"))
 EMBED_MODEL = _env("EMBED_MODEL", "Qwen/Qwen3-Embedding-0.6B")
+EMBED_DIM = int(_env("EMBED_DIM", "1024"))
+
+# 向量缓存：建库脚本写、入库脚本读。默认放在 chunks 文件同级的 cache/。
+CACHE_DIR = _env("EMB_CACHE_DIR",
+                 os.path.join(os.path.dirname(CHUNKS_FILE), "cache"))
+NPY_NAME = "emb_qwen3-embedding-0.6b.npy"
+META_NAME = "emb_meta.json"
+NPY_FILE = os.path.join(CACHE_DIR, NPY_NAME)
+META_FILE = os.path.join(CACHE_DIR, META_NAME)
+
 HF_HOME = _env("HF_HOME", r"D:\WorkBuddy\models\hf")
 
 # ---------------------------------------------------------------------------
@@ -96,6 +114,48 @@ def assert_ascii_path(path, name="CHROMA_DIR"):
 assert_ascii_path(CHROMA_DIR)
 
 
+class Config(object):
+    """当前生效配置的快照。
+
+    显式传入的字段优先（测试里用它构造假配置）；不传则取本模块加载时算好的值。
+    """
+
+    def __init__(self, chroma_dir=None, collection=None, embed_model=None,
+                 embed_dim=None, chunks_file=None, cache_dir=None,
+                 npy_file=None, meta_file=None, hf_home=None, top_k=None):
+        self.ROOT = ROOT
+        self.CHROMA_DIR = CHROMA_DIR if chroma_dir is None else chroma_dir
+        self.COLLECTION = COLLECTION if collection is None else collection
+        self.EMBED_MODEL = EMBED_MODEL if embed_model is None else embed_model
+        self.EMBED_DIM = EMBED_DIM if embed_dim is None else int(embed_dim)
+        self.CHUNKS_FILE = CHUNKS_FILE if chunks_file is None else chunks_file
+        self.CACHE_DIR = CACHE_DIR if cache_dir is None else cache_dir
+        self.NPY_FILE = (NPY_FILE if npy_file is None
+                         else npy_file)
+        self.META_FILE = (META_FILE if meta_file is None
+                          else meta_file)
+        self.HF_HOME = HF_HOME if hf_home is None else hf_home
+        self.TOP_K = TOP_K if top_k is None else int(top_k)
+
+    def as_dict(self):
+        return {"ROOT": self.ROOT, "CHROMA_DIR": self.CHROMA_DIR,
+                "COLLECTION": self.COLLECTION, "EMBED_MODEL": self.EMBED_MODEL,
+                "EMBED_DIM": self.EMBED_DIM, "CHUNKS_FILE": self.CHUNKS_FILE,
+                "CACHE_DIR": self.CACHE_DIR, "NPY_FILE": self.NPY_FILE,
+                "META_FILE": self.META_FILE, "HF_HOME": self.HF_HOME,
+                "TOP_K": self.TOP_K}
+
+    def __repr__(self):
+        return (f"Config(CHROMA_DIR={self.CHROMA_DIR!r}, "
+                f"COLLECTION={self.COLLECTION!r}, "
+                f"EMBED_MODEL={self.EMBED_MODEL!r})")
+
+
+def current():
+    """返回一份当前生效配置的快照。"""
+    return Config()
+
+
 def mask(secret):
     """Key 掩码：只留前 3 位与后 4 位，够确认是哪把 Key，又不会泄到截图里。"""
     if not secret:
@@ -112,7 +172,9 @@ def summary():
         ("CHROMA_DIR", CHROMA_DIR),
         ("COLLECTION", COLLECTION),
         ("CHUNKS_FILE", CHUNKS_FILE),
+        ("CACHE_DIR", CACHE_DIR),
         ("EMBED_MODEL", EMBED_MODEL),
+        ("EMBED_DIM", EMBED_DIM),
         ("HF_HOME", HF_HOME),
         ("DASHSCOPE_BASE_URL", DASHSCOPE_BASE_URL),
         ("CHAT_MODEL", CHAT_MODEL),
