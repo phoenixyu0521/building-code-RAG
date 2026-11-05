@@ -519,6 +519,10 @@ class TestConfigResolution(unittest.TestCase):
         e = dict(os.environ)
         e.update(env)
         e["PYTHONPATH"] = ROOT
+        # 项目根的 .env 里可能有 CHROMA_COLLECTION=standards_v6 之类的本机设置；
+        # 把 PROJECT_ROOT 指到空目录，测的才是「什么都没设时的默认值」。
+        if "PROJECT_ROOT" not in env:
+            e["PROJECT_ROOT"] = self.tmp
         return subprocess.run([sys.executable, "-c", probe], cwd=self.tmp, env=e,
                               capture_output=True, text=True, encoding="utf-8",
                               errors="replace")
