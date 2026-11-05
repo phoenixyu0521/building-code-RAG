@@ -14,8 +14,8 @@ POST /api/ask        问一个问题 → 答案 + 引用条文
 
 起服务
 ------
-    python -m uvicorn app.api:app --port 8000
-然后浏览器打开 http://127.0.0.1:8000
+    python -m uvicorn app.api:app --port 8010
+然后浏览器打开 http://127.0.0.1:8010
 
 自检（只打印路由，不起服务）：
     python -m app.api
@@ -233,5 +233,5 @@ if __name__ == "__main__":
     print(f"\n前端目录：{WEB_DIR}  "
           f"{'存在' if os.path.isdir(WEB_DIR) else '不存在'}")
     print("\n起服务（不要把 --reload 用在这里，改代码会重载模型，要等十几秒）：")
-    print("  python -m uvicorn app.api:app --port 8000")
-    print("  然后浏览器打开 http://127.0.0.1:8000")
+    print("  python -m uvicorn app.api:app --port 8010")
+    print("  然后浏览器打开 http://127.0.0.1:8010")
