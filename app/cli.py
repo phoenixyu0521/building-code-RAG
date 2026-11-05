@@ -26,7 +26,7 @@ from app.pipeline import ask, format_result               # noqa: E402
 # 常用的元数据过滤预设（Chroma 的 where 语法）
 PRESETS = {
     "force-only": ("只看强制条文", {"force_status": {"$in": ["全文强制", "部分强条"]}}),
-    "exclude-repealed": ("排除已废止强条", {"force_status": {"$ne": "强条已废止(由GB55031替代)"}}),
+    "exclude-repealed": ("排除已废止强条", {"force_status": {"$ne": "原强条已废止"}}),
     "article-only": ("只要正文，不要表格/节标题", {"kind": "article"}),
     "current": ("只看现行", {"status": {"$in": ["现行", "现行(技术参考)"]}}),
 }

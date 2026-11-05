@@ -29,6 +29,8 @@ split_articles_v2.py —— 建筑规范 OCR 文本 → 条文 chunk（v2）
    子串（长度≥4，或高特异短碎片），绝不删单字。
 
 7. 内置完整性自检：断号 / 重复号 / 首条异常，写入 _自检问题.csv。
+8. 条文级强制状态：由 force_rules.py 按「标准号 + 条文号」判定（不再整本套用）；
+   节标题只用于切断上一条，不再生成空壳 chunk。
 
 用法：
   python split_articles_v2.py --src <ocr目录> --out <chunks目录>
@@ -40,6 +42,8 @@ import os
 import re
 import sys
 
+import force_rules
+
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -48,16 +52,15 @@ except Exception:
 # ------------------------------------------------------------------ 规范元数据
 META = {
     "GB 55031-2022": {"code": "GB 55031-2022", "name": "民用建筑通用规范",
-                      "version": "2022", "force": "全文强制", "status": "现行"},
+                      "version": "2022", "status": "现行"},
     "GB 55037-2022": {"code": "GB 55037-2022", "name": "建筑防火通用规范",
-                      "version": "2022", "force": "全文强制", "status": "现行"},
+                      "version": "2022", "status": "现行"},
     "GB 50352-2019": {"code": "GB 50352-2019", "name": "民用建筑设计统一标准",
-                      "version": "2019", "force": "强条已废止(由GB55031替代)",
-                      "status": "现行(技术参考)"},
+                      "version": "2019", "status": "现行(技术参考)"},
     "GB 55019-2021": {"code": "GB 55019-2021", "name": "建筑与市政工程无障碍通用规范",
-                      "version": "2021", "force": "全文强制", "status": "现行"},
+                      "version": "2021", "status": "现行"},
     "JGJ 38-2015":   {"code": "JGJ 38-2015", "name": "图书馆建筑设计规范",
-                      "version": "2015", "force": "部分强条", "status": "现行"},
+                      "version": "2015", "status": "现行"},
 }
 
 # ------------------------------------------------------------------ 正则
@@ -229,7 +232,7 @@ def meta_of(filename):
     for key, m in META.items():
         if key in stem:
             return dict(m)
-    return {"code": stem, "name": stem, "version": "", "force": "未知", "status": "未知"}
+    return {"code": stem, "name": stem, "version": "", "status": "未知"}
 
 
 def chapter_of(no):
@@ -524,7 +527,8 @@ def split_file(md_path, json_path):
             elif mh and mh.group(2).strip():
                 n_inline += 1
     postfix = n_only > 0 and n_only >= 0.8 * (n_only + n_inline)
-    raw_text = open(md_path, encoding="utf-8").read()
+    with open(md_path, encoding="utf-8") as fh:
+        raw_text = fh.read()
     known_ch = chapters_present(raw_text)
     known_sec = sections_present(raw_text)
 
@@ -610,9 +614,8 @@ def split_file(md_path, json_path):
             mh2 = SEC_HEAD_RE.match(s)
             if mh2 and b.started and not (set(mh2.group(2)) & SEC_BAD_CHARS):
                 b.flush()
-                b.chunks.append({"article_no": mh2.group(1), "kind": "section",
-                                 "page_start": page, "page_end": page,
-                                 "text": mh2.group(2), "moved": False})
+                # 节标题只用于切断上一条，**本身不入库** —— 空壳标题会被
+                # 向量检索命中并挤掉真正的条文（审查问题 6）。
                 continue
 
             parts = ART_INLINE_RE.split(s) if b.cur else [s]
@@ -645,7 +648,8 @@ def split_file(md_path, json_path):
     for c in chunks:
         no = c["article_no"]
         rec = {"standard": meta["code"], "standard_name": meta["name"],
-               "version": meta["version"], "force_status": meta["force"], "status": meta["status"],
+               "version": meta["version"], "status": meta["status"],
+               "force_status": force_rules.resolve(meta["code"], no),
                "article_no": no, "chapter": chapter_of(no),
                "page_start": c["page_start"], "page_end": c["page_end"],
                "kind": c["kind"], "text": tail_clean(c["text"].strip(), known_ch, known_sec)}
@@ -836,6 +840,15 @@ def main():
     print(f"合计 {len(all_chunks)} 条 -> {os.path.join(args.out, 'chunks.jsonl')}")
     print(f"待校对 {len(flagged)} 条 -> 待校对优先清单.csv")
     print(f"内置自检发现 {len(issues)} 项问题 -> _自检问题.csv")
+    # 强制状态按条判定后，把分布打出来 —— 一眼能看出有没有整本套用
+    print("强制状态分布（条文级的可核结果）：")
+    for std in sorted({c["standard"] for c in all_chunks}):
+        dist = {}
+        for c in all_chunks:
+            if c["standard"] == std:
+                dist[c["force_status"]] = dist.get(c["force_status"], 0) + 1
+        detail = "，".join(f"{k} {v}" for k, v in sorted(dist.items()))
+        print(f"   {std:<24} {detail}")
     for std, kind, detail in issues[:30]:
         print(f"   [{std}] {kind}: {detail}")
 

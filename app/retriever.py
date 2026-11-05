@@ -19,6 +19,40 @@ from app.config import CHROMA_DIR, COLLECTION, EMBED_MODEL, TOP_K
 import chromadb                                          # noqa: E402
 from sentence_transformers import SentenceTransformer     # noqa: E402
 
+# 默认只检索「条文」。节标题（kind=section）已不再入库，但索引可能是旧的；
+# 表格 / 附录表格只有调用方显式指定 kind 时才放行。
+DEFAULT_KIND = "article"
+
+
+def _mentions_kind(where):
+    """where 里（含 $and/$or 子条件）是否已显式限定 kind。"""
+    if not isinstance(where, dict):
+        return False
+    if "kind" in where:
+        return True
+    for key in ("$and", "$or"):
+        sub = where.get(key)
+        if isinstance(sub, list) and any(_mentions_kind(x) for x in sub):
+            return True
+    return False
+
+
+def _with_default_kind(where):
+    """未显式指定 kind 时补上 kind=article。
+
+    为什么要有这一层：库里若混进节标题空壳（111 条、平均 6 字），它们会
+    抢占语义检索结果；调用方忘了写 kind 时，这里兜底只查条文。
+    显式指定（如 kind="table"）时原样返回，不做二次加工。
+    """
+    if not where:
+        return {"kind": DEFAULT_KIND}
+    if _mentions_kind(where):
+        return where
+    # 已经是 $and：摊平追加，避免嵌套 $and（Chroma 对嵌套运算符支持不稳）
+    if set(where) == {"$and"} and isinstance(where["$and"], list):
+        return {"$and": [*where["$and"], {"kind": DEFAULT_KIND}]}
+    return {"$and": [where, {"kind": DEFAULT_KIND}]}
+
 
 class Retriever:
     """Chroma 检索的薄封装。
@@ -59,9 +93,10 @@ class Retriever:
         top_k     : 返回条数，默认取配置里的 TOP_K
         where     : Chroma 元数据过滤，例如
                     只看现行强制条文  {"force_status": {"$in": ["全文强制", "部分强条"]}}
-                    排除已废止强条    {"force_status": {"$ne": "强条已废止(由GB55031替代)"}}
+                    排除已废止强条    {"force_status": {"$ne": "原强条已废止"}}
                     只查某一本规范    {"standard": "GB 50352-2019"}
                     只要正文不要表格  {"kind": "article"}
+                    ⚠️ 不传 kind 时自动只查 kind="article"（见 _with_default_kind）
         min_score : 相似度下限（0~1）。默认 None 不过滤 ——
                     ⚠️ 实测在本项目数据上**不存在能同时压住负例、留住正例的阈值**
                     （负例最高 0.727 > 正例 5% 分位 0.675），所以拒答靠提示词，不靠这里。
@@ -72,6 +107,7 @@ class Retriever:
         """
         k = int(top_k or self.top_k)
         col = self._get_col()
+        where = _with_default_kind(where)
 
         # ⚠️ 查询侧必须写 prompt_name="query"（模型自带的检索指令）。
         #    漏掉不会报错，只会让效果悄悄变差 —— 本项目最隐蔽的坑。
@@ -83,7 +119,7 @@ class Retriever:
         res = col.query(
             query_embeddings=vec,
             n_results=k,
-            where=where or None,
+            where=where,
             include=["documents", "metadatas", "distances"],
         )
 

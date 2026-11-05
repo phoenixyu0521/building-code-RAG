@@ -137,6 +137,12 @@ def clean_meta(r):
 def read_chunks():
     raw = open(CHUNKS, "rb").read()
     rows = [json.loads(l) for l in raw.decode("utf-8").splitlines() if l.strip()]
+    # 节标题空壳不入库：它们没有可答内容，只会占 top-k 名额。
+    # 切分脚本已不再产出 kind=section，这里是防线（兼容旧 chunks 目录）。
+    dropped = [r for r in rows if r.get("kind") == "section"]
+    if dropped:
+        rows = [r for r in rows if r.get("kind") != "section"]
+        print(f"[chunks] 跳过 {len(dropped)} 条 kind=section（节标题不入库）")
     return rows, hashlib.sha1(raw).hexdigest()
 
 

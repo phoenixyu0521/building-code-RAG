@@ -41,8 +41,8 @@ from pydantic import BaseModel, Field                         # noqa: E402
 
 WEB_DIR = os.path.join(config.ROOT, "web")
 
-# 「只看现行强制条文」= 排除那 303 条「强条已废止(由GB55031替代)」
-# 取值来自实库（1083 条）：全文强制 558 / 部分强条 222 / 已废止 303
+# 「只看现行强制条文」= 全文强制 + 部分强条。
+# GB 50352 的 4 条原强条已随 GB 55031 废止，标「原强条已废止」，不计入。
 FORCE_OK = ["全文强制", "部分强条"]
 
 
@@ -102,6 +102,8 @@ def _build_where(force_only, standards):
     conds = []
     if force_only:
         conds.append({"force_status": {"$in": FORCE_OK}})
+        # 强制过滤只对条文有意义：表格/节标题即使继承了状态也不应算作强条命中
+        conds.append({"kind": "article"})
     if standards:
         conds.append({"standard": {"$in": list(standards)}})
     if not conds:
