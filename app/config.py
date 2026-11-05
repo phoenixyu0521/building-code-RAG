@@ -64,7 +64,7 @@ COLLECTION = _env("CHROMA_COLLECTION", "standards")
 # 换模型 = 换向量空间 = 旧库作废，只能重新向量化。
 # ---------------------------------------------------------------------------
 CHUNKS_FILE = _env("CHUNKS_FILE",
-                   os.path.join(ROOT, "输出文档", "chunks_v5", "chunks.jsonl"))
+                   os.path.join(ROOT, "输出文档", "chunks_v6", "chunks.jsonl"))
 EMBED_MODEL = _env("EMBED_MODEL", "Qwen/Qwen3-Embedding-0.6B")
 EMBED_DIM = int(_env("EMBED_DIM", "1024"))
 

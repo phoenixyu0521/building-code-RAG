@@ -71,15 +71,20 @@ except Exception:
 BASE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.dirname(os.path.dirname(BASE))
 EVAL_PATH = os.path.join(BASE, "评测集.jsonl")
-CHUNKS = os.path.join(PROJ, r"输出文档\chunks_v5\chunks.jsonl")
+# 库目录 / 集合名 / 模型名 / 语料路径一律取 app/config.py（与 app/、run_eval.py 同源）
+sys.path.insert(0, os.path.join(PROJ, "输出文档", "scripts"))
+from _config import load_config                        # noqa: E402
+
+CFG = load_config()
+CHUNKS = CFG.CHUNKS_FILE
 ENV_PATH = os.path.join(PROJ, ".env")
 IN_JSONL = os.path.join(BASE, "ragas_input.jsonl")
 IN_DRY = os.path.join(BASE, "ragas_input_dry.jsonl")
 CACHE = os.path.join(BASE, "ragas_cache.jsonl")
 
-CHROMA_DIR = r"D:\WorkBuddy\chroma_db"      # 必须纯 ASCII，见 build_index.py
-COLL = "standards"
-EMB_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+CHROMA_DIR = CFG.CHROMA_DIR                  # 必须纯 ASCII，见 build_index.py
+COLL = CFG.COLLECTION
+EMB_MODEL = CFG.EMBED_MODEL
 JUDGE = "qwen-plus"
 
 

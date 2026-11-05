@@ -36,8 +36,12 @@ except Exception:
     pass
 
 PROJ = r"D:\WorkBuddy\项目"
-CHUNKS = os.path.join(PROJ, r"输出文档\chunks_v5\chunks.jsonl")
-DIFY_DIR = os.path.join(PROJ, r"输出文档\chunks_v5\dify")
+# 语料路径与 app/、run_eval.py 同源（app/config.py），不在脚本里写死版本目录
+sys.path.insert(0, os.path.join(PROJ, "输出文档", "scripts"))
+from _config import load_config                        # noqa: E402
+
+CHUNKS = load_config().CHUNKS_FILE
+DIFY_DIR = os.path.join(os.path.dirname(CHUNKS), "dify")
 OUT = os.path.join(PROJ, r"输出文档\检索评测\评测集.jsonl")
 
 JGJ = "JGJ 38-2015"
