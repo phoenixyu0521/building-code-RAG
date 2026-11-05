@@ -355,6 +355,11 @@ class TestPolicy(unittest.TestCase):
         self.assertEqual(out["strategy"], "refuse")
         self.assertEqual(out["answer"], g.NO_HIT_REPLY)
 
+    def test_no_hit_reply_matches_prompts(self):
+        """防线层为了零副作用自己写死了这句话，必须与 prompts 里的同文。"""
+        from app import prompts
+        self.assertEqual(g.NO_HIT_REPLY, prompts.NO_HIT_REPLY)
+
     def test_extraction_labels_source_and_kind(self):
         hits = [hit(GB31, "3.1.6", "3.1.6 下列建筑空间不应计算建筑面积……", score=0.9)]
         ans = "依据【GB 50352-2019】第 8.8.8 条……"

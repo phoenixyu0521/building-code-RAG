@@ -31,7 +31,6 @@ from contextlib import asynccontextmanager
 from app import config                                        # noqa: F401
 from app import guardrails
 from app import pipeline
-from app.prompts import NO_HIT_REPLY
 from app.retriever import Retriever
 
 import numpy as np                                            # noqa: E402
