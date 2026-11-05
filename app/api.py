@@ -29,6 +29,7 @@ from contextlib import asynccontextmanager
 # ⚠️ 顺序要紧：import app.config 会先执行 app/__init__.py（把 HF_HOME 设好），
 #    必须发生在任何会用向量模型的东西之前。
 from app import config                                        # noqa: F401
+from app import guardrails
 from app import pipeline
 from app.prompts import NO_HIT_REPLY
 from app.retriever import Retriever
@@ -185,14 +186,25 @@ def ask_question(req: AskRequest):
 
     hits = [_hit_to_dict(h) for h in r["hits"]]
 
-    # 两种拒答：① 检索 0 条（pipeline 短路，没调大模型）；② 大模型按提示词第 4 条拒答
-    refused = len(hits) == 0 or r["answer"].strip() == NO_HIT_REPLY.strip()
+    # 拒答判定一律看 pipeline 带回来的校验结论，**不再靠字符串比对**：
+    #   ① 检索 0 条 / 域外 → strategy="refuse"
+    #   ② 模型自己按铁律第 4 条拒答 → verification.refusal_only
+    #   ③ 引用校验不过且抽取不出任何可用片段 → 降级为拒答
+    # 旧写法 `answer == NO_HIT_REPLY` 只认形式不认内容：模型换个说法编答案就穿过去了；
+    # 而模型用别的措辞说「未收录」时旧写法又会漏判。
+    v = r.get("verification") or {}
+    refused = (v.get("strategy") == "refuse"
+               or bool(v.get("refusal_only"))
+               or (not v.get("ok") and not r.get("used_llm")))
+    verification = guardrails.summarize(v, r.get("relevance"))
 
     return _clean({
         "question": r["question"],
         "answer": r["answer"],
         "used_llm": r["used_llm"],
         "refused": refused,
+        "degraded": bool(r.get("degraded")),
+        "verification": verification,
         "top_k": top_k,
         "force_only": req.force_only,
         "standards": req.standards,
