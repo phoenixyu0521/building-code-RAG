@@ -47,6 +47,9 @@ _dl/
 # 下划线前缀 = 一次性探查/诊断脚本与临时图（_probe*.py / _diag_*.py / _bench.png）。
 # 这类文件是过程产物，只对本机那次排查有意义，入库只会污染历史。
 输出文档/scripts/_*
+# 例外：脚本共用的配置薄壳。它在 scripts 里、以 _ 开头，但**必须入库** ——
+# 否则 build_index / verify_index / run_eval 全部 ImportError。
+!输出文档/scripts/_config.py
 !输出文档/docs/
 !输出文档/docs/*.md
 # 检索评测是一整套自研工具（86 条评测集 + 跑分器 + 说明），要入库。

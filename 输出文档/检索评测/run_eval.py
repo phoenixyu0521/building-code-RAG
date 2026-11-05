@@ -48,16 +48,23 @@ except Exception:
     pass
 
 # 本地 chroma 后端要载 embedding 模型：缓存位置必须在 import 之前定下来。
-# setdefault：你若自己设过 HF_HOME，以你的为准。
-os.environ.setdefault("HF_HOME", r"D:\WorkBuddy\models\hf")
+# 配置（库目录 / 集合名 / 模型名 / HF_HOME）一律来自 app/config.py —— 经
+# 输出文档/scripts/_config.py 这层薄壳引入，本文件不再硬编码。
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "输出文档", "scripts"))
+from _config import load_config                       # noqa: E402
+
+CFG = load_config()
+os.environ.setdefault("HF_HOME", CFG.HF_HOME)
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJ = os.path.dirname(os.path.dirname(BASE_DIR))          # D:\WorkBuddy\项目
+PROJ = CFG.ROOT
 EVAL_PATH = os.path.join(BASE_DIR, "评测集.jsonl")
-CHROMA_DIR = r"D:\WorkBuddy\chroma_db"   # 必须纯 ASCII！见 build_index.py「中文路径陷阱」
-COLL = "standards"
-MODEL = "Qwen/Qwen3-Embedding-0.6B"
+CHROMA_DIR = CFG.CHROMA_DIR
+COLL = CFG.COLLECTION
+MODEL = CFG.EMBED_MODEL
 
 HEADER_RE = re.compile(r"】(.+?)（")            # 从检索结果正文里抠出「条文号」
 
@@ -184,8 +191,15 @@ class ChromaBackend:
                 f"\n打不开本地库：{CHROMA_DIR}\n"
                 f"  {type(e).__name__}: {str(e)[:150]}\n"
                 f"  → 先自检并重建：& $PY "
-                f"\"D:\\WorkBuddy\\项目\\输出文档\\scripts\\verify_index.py\"\n"
+                f"\"{os.path.join(PROJ, '输出文档', 'scripts', 'verify_index.py')}\"\n"
                 f"     详见《本地部署操作指引.md》第 3~4 步。")
+        # 集合的向量模型必须与当前配置一致，否则分数没有意义
+        try:
+            from app import index_ops
+            index_ops.assert_collection_model(self.col.metadata, CFG,
+                                              where=f"本地集合 `{COLL}`")
+        except SystemExit as exc:
+            raise SystemExit(f"\n{exc}\n  → 详见 app/config.py 与 build_index.py")
         self._tk = int(top_k_override or PROFILES[profile].get("top_k") or 10)
 
     @property
