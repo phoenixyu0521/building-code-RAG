@@ -24,6 +24,8 @@ import re
 import sys
 from collections import Counter, defaultdict
 
+import force_rules
+
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -51,6 +53,90 @@ def rng(nums):
         start = prev = n
     out.append(str(start) if start == prev else f"{start}~{prev}")
     return ",".join(out)
+
+
+def force_gate(rows, min_ok):
+    """条文级强制状态 / 检索范围门禁。返回 (失败项, 摘要行)。
+
+    这里不做「打印了就算过」：任一项失败，main() 最终 sys.exit(1)。
+    """
+    fails = []
+    summary = []
+
+    # 1) 每条 chunk 的 force_status 必须等于规则表的判定
+    bad = []
+    unknown = sorted({r["standard"] for r in rows
+                      if force_rules.rule_of(r["standard"]) is None})
+    if unknown:
+        fails.append("标准未在 force_rules 登记：" + "、".join(unknown))
+    for r in rows:
+        if r["standard"] in unknown:
+            continue
+        want = force_rules.resolve(r["standard"], r["article_no"])
+        if r["force_status"] != want:
+            bad.append(f"{r['standard']} {r['article_no']}: "
+                       f"force_status={r['force_status']!r}，规则要求 {want!r}")
+    if bad:
+        fails.append(f"force_status 与规则表不一致 {len(bad)} 条："
+                     + "；".join(bad[:8]) + (" …" if len(bad) > 8 else ""))
+    summary.append(("强制状态与 force_rules 一致",
+                    "PASS" if not bad and not unknown else "FAIL",
+                    f"{len(rows)} 条"))
+
+    # 2) 节标题不得入库
+    secs = [r for r in rows if r["kind"] == "section"]
+    if secs:
+        sample = "、".join(f"{r['standard']} {r['article_no']}" for r in secs[:5])
+        fails.append(f"kind=section 仍有 {len(secs)} 条（节标题不得入库）：{sample}")
+    summary.append(("kind=section 数量为 0", "PASS" if not secs else "FAIL",
+                    f"{len(secs)} 条"))
+
+    # 3) 空文本 / 超短空壳
+    empty = [r for r in rows if not str(r.get("text", "")).strip()]
+    if empty:
+        fails.append(f"空文本 chunk {len(empty)} 条：" + "、".join(
+            f"{r['standard']} {r['article_no']}" for r in empty[:5]))
+    summary.append(("空文本", "PASS" if not empty else "FAIL", f"{len(empty)} 条"))
+
+    short = [r for r in rows
+             if r["kind"] == "article" and len(r["text"].strip()) < min_ok]
+    if short:
+        fails.append(f"超短条文 {len(short)} 条（<{min_ok} 字）：" + "、".join(
+            f"{r['standard']} {r['article_no']}({len(r['text'])}字)" for r in short[:5]))
+    summary.append((f"超短条文（<{min_ok} 字）", "PASS" if not short else "FAIL",
+                    f"{len(short)} 条"))
+
+    # 4) 强制过滤样本：模拟 api/retriever 的 force_only 过滤（kind=article）
+    hits = [r for r in rows
+            if r["kind"] == "article" and r["force_status"] in force_rules.FORCE_OK]
+    sample_bad = []
+    for std, rule in force_rules.STANDARDS.items():
+        if rule["mode"] == "all":
+            # 全文强制：该标准的全部条文都应命中
+            want = {r["article_no"] for r in rows
+                    if r["standard"] == std and r["kind"] == "article"}
+        elif rule["status"] in force_rules.FORCE_OK:
+            want = set(rule["articles"])
+        else:
+            want = set()
+        got = {r["article_no"] for r in hits if r["standard"] == std}
+        if got != want:
+            missing = sorted(want - got)
+            extra = sorted(got - want)
+            detail = []
+            if missing:
+                detail.append("漏 " + "、".join(missing[:8])
+                              + (" …" if len(missing) > 8 else ""))
+            if extra:
+                detail.append("多 " + "、".join(extra[:8])
+                              + (" …" if len(extra) > 8 else ""))
+            sample_bad.append(f"{std}（{'；'.join(detail)}）")
+    if sample_bad:
+        fails.append("强制过滤命中与规则表不符：" + "；".join(sample_bad))
+    summary.append(("强制过滤样本", "PASS" if not sample_bad else "FAIL",
+                    f"共命中 {len(hits)} 条"))
+
+    return fails, summary
 
 
 def main():
@@ -112,7 +198,9 @@ def main():
                                         + (f"（{sec}.{b//10} 亦未出现）"
                                            if (b // 10) not in segs else ""))
 
-        trunc = [c for c in arts if c["text"] and c["text"].rstrip()[-1] not in TERMINAL]
+        # 空白文本交给门禁报「空文本」；这里不能取 [-1]，否则 IndexError
+        trunc = [c for c in arts
+                 if c["text"].strip() and c["text"].rstrip()[-1] not in TERMINAL]
         moved = [c for c in arts if "移入" in c.get("review", "")]
         leak = [c for c in arts if "疑漏" in c.get("review", "")]
         wm = [c for c in cs if WM_FRAG.search(c["text"])]
@@ -200,6 +288,42 @@ def main():
             csv_rows.append([std, "超短条", c["article_no"], c["page_start"],
                              len(c["text"]), c["text"]])
 
+    # —— 强制状态分布（规则核对）
+    report.append("## 强制状态分布")
+    report.append("")
+    report.append("| 规范 | force_status | 条数 |")
+    report.append("|---|---|---|")
+    dist = Counter((r["standard"], r["force_status"]) for r in rows)
+    for (std, fs), n in sorted(dist.items()):
+        report.append(f"| {std} | {fs} | {n} |")
+    report.append("")
+
+    # —— 门禁
+    fails, gate_summary = force_gate(rows, args.min_ok)
+    report.append("## 门禁（失败 → 退出码 1）")
+    report.append("")
+    report.append("| 检查 | 结果 | 备注 |")
+    report.append("|---|---|---|")
+    for name, state, note in gate_summary:
+        report.append(f"| {name} | {state} | {note} |")
+    report.append("")
+    if fails:
+        report.append(f"**门禁未通过**（{len(fails)} 项）：")
+        for f in fails:
+            report.append(f"- {f}")
+    else:
+        report.append("**门禁通过**：强制状态、检索范围、文本完整性均符合规则。")
+    report.append("")
+
+    uncertain = force_rules.uncertain_for()
+    if uncertain:
+        report.append("## 待核条文（不阻断，但需业务确认）")
+        report.append("")
+        for u in uncertain:
+            report.append(f"- {u['standard']} {'、'.join(u['articles'])}："
+                          f"{u['question']}（本次口径：{u['decision']}）")
+        report.append("")
+
     # —— 结论
     report.append("## 结论")
     report.append("")
@@ -231,6 +355,12 @@ def main():
 
     print("\n".join(report[-14:]))
     print(f"\n报告已写入:\n  {md_path}\n  {csv_path}")
+    if fails:
+        print(f"\n[门禁] 未通过：{len(fails)} 项（退出码 1）")
+        for f in fails:
+            print(f"  - {f}")
+        sys.exit(1)
+    print("\n[门禁] 门禁通过")
 
 
 if __name__ == "__main__":
